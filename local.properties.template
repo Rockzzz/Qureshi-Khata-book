@@ -1,0 +1,8 @@
+# IMPORTANT: Add your Gemini API Key here
+# Get your free key from: https://aistudio.google.com/app/apikey
+
+GEMINI_API_KEY=your_api_key_here
+
+# Free tier: 1,500 requests per day
+# Cost per request: ~₹0.001 (after free tier)
+# Expected monthly cost for most users: ₹0-10
