@@ -43,8 +43,11 @@ enum class TransactionCategory {
 }
 
 /**
- * Auto-categorize a transaction based on mode, amount, party, and note
+ * Auto-categorize a transaction based on mode, amount, party, note, and sourceType
  * Rules:
+ * - sourceType = "expense": Always DAILY_EXPENSE (regardless of amount)
+ * - sourceType = "supplier" + PURCHASE mode: PURCHASE category
+ * - sourceType = "supplier" + CASH/BANK_OUT: PAYMENT_GIVEN (supplier payment)
  * - PURCHASE mode: Always goes to Purchase category
  * - MONEY_RECEIVED: Any CASH_IN or BANK_IN transaction
  * - DAILY_EXPENSE: Small amounts (< ₹5,000) regardless of party
@@ -55,8 +58,22 @@ fun categorizeTransaction(
     mode: String,
     amount: Double,
     party: String?,
-    note: String?
+    note: String?,
+    sourceType: String? = null
 ): TransactionCategory {
+    // First check sourceType for explicit categorization
+    when (sourceType) {
+        "expense" -> return TransactionCategory.DAILY_EXPENSE // Expenses always go to Kharcha
+        "supplier" -> {
+            // Supplier purchase = PURCHASE, supplier payment = PAYMENT_GIVEN
+            return if (mode == "PURCHASE") {
+                TransactionCategory.PURCHASE
+            } else {
+                TransactionCategory.PAYMENT_GIVEN
+            }
+        }
+    }
+    
     // Check for purchase keywords
     val hasPurchaseKeyword = note?.contains("buffalo", ignoreCase = true) == true ||
                              note?.contains("purchase", ignoreCase = true) == true ||
@@ -133,7 +150,7 @@ fun DailyEntryScreen(
     }
     
     val categorizedTransactions = remember(transactions) {
-        transactions.groupBy { tx -> categorizeTransaction(tx.mode, tx.amount, tx.party, tx.note) }
+        transactions.groupBy { tx -> categorizeTransaction(tx.mode, tx.amount, tx.party, tx.note, tx.sourceType) }
     }
     
     val moneyReceivedTotal = categorizedTransactions[TransactionCategory.MONEY_RECEIVED]?.sumOf { it.amount } ?: 0.0
@@ -568,7 +585,7 @@ fun DailyEntryScreen(
             ) {
                 Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("💾 Hisab Save Karo", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text("Hisab Save Karo", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -652,10 +669,10 @@ fun PremiumLedgerSection(
     isExpanded: Boolean,
     onToggle: () -> Unit,
     transactions: List<DailyLedgerTransaction>,
-    onAddClick: () -> Unit,
-    onEditClick: (DailyLedgerTransaction) -> Unit,
-    onDeleteClick: (DailyLedgerTransaction) -> Unit,
-    addButtonText: String
+    onAddClick: () -> Unit = {},  // Keep for compatibility but won't be used
+    onEditClick: (DailyLedgerTransaction) -> Unit = {},  // Keep for compatibility but won't be used
+    onDeleteClick: (DailyLedgerTransaction) -> Unit = {},  // Keep for compatibility but won't be used
+    addButtonText: String = ""
 ) {
     Card(
         modifier = Modifier
@@ -697,70 +714,63 @@ fun PremiumLedgerSection(
                 exit = shrinkVertically() + fadeOut()
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
-                    transactions.forEach { tx ->
-                        Card(
+                    if (transactions.isEmpty()) {
+                        // Empty state
+                        Text(
+                            text = "No entries",
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clickable { onEditClick(tx) },  // Tap to edit
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FAFB)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                .padding(vertical = 16.dp),
+                            textAlign = TextAlign.Center,
+                            color = TextSecondary,
+                            fontSize = 14.sp
+                        )
+                    } else {
+                        transactions.forEach { tx ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FAFB)),
+                                shape = RoundedCornerShape(12.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .width(4.dp)
-                                        .height(44.dp)
-                                        .background(headerColor, RoundedCornerShape(2.dp))
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(4.dp)
+                                            .height(44.dp)
+                                            .background(headerColor, RoundedCornerShape(2.dp))
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            tx.party ?: tx.note ?: "Entry",
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 14.sp,
+                                            color = TextPrimary
+                                        )
+                                        Text(
+                                            "${if (tx.mode.contains("CASH")) "Cash" else "Bank"} • ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(tx.createdAt))}",
+                                            fontSize = 12.sp,
+                                            color = TextSecondary
+                                        )
+                                    }
                                     Text(
-                                        tx.party ?: tx.note ?: "Entry",
-                                        fontWeight = FontWeight.Medium,
-                                        fontSize = 14.sp,
+                                        "₹${String.format("%,.0f", tx.amount)}",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
                                         color = TextPrimary
                                     )
-                                    Text(
-                                        "${if (tx.mode.contains("CASH")) "Cash" else "Bank"} • ${SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(tx.createdAt))}",
-                                        fontSize = 12.sp,
-                                        color = TextSecondary
-                                    )
-                                }
-                                Text(
-                                    "₹${String.format("%,.0f", tx.amount)}",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 15.sp,
-                                    color = TextPrimary
-                                )
-                                // Edit button
-                                IconButton(onClick = { onEditClick(tx) }, modifier = Modifier.size(36.dp)) {
-                                    Icon(Icons.Default.Edit, null, tint = Color(0xFF667EEA), modifier = Modifier.size(16.dp))
-                                }
-                                // Delete button
-                                IconButton(onClick = { onDeleteClick(tx) }, modifier = Modifier.size(36.dp)) {
-                                    Icon(Icons.Default.Close, null, tint = Color(0xFFEF4444), modifier = Modifier.size(18.dp))
+                                    // Read-only indicator (no edit/delete buttons)
                                 }
                             }
                         }
                     }
                     
-                    // Add Button
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .border(2.dp, headerColor.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable(onClick = onAddClick)
-                            .padding(14.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(addButtonText, color = headerColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    }
+                    // Removed Add Button - entries come from Customer/Supplier/Expense screens
                 }
             }
         }

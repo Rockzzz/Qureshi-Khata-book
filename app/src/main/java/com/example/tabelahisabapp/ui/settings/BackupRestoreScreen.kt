@@ -1,9 +1,12 @@
 package com.example.tabelahisabapp.ui.settings
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -15,10 +18,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.tabelahisabapp.data.backup.BackupInfo
+import java.io.File
 
 /**
  * Redesigned Backup & Restore Screen
@@ -45,6 +52,15 @@ fun BackupRestoreScreen(
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             viewModel.handleGoogleSignInResult(result.data)
+        }
+    }
+    
+    // File picker launcher for selecting backup files
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            viewModel.restoreFromFileUri(context, it)
         }
     }
 
@@ -77,7 +93,10 @@ fun BackupRestoreScreen(
                 googleDriveConnected = uiState.googleDriveEnabled,
                 lastDriveSync = uiState.lastGoogleDriveSync,
                 isLoading = uiState.isLoading,
-                onBackupNow = { viewModel.createBackupNow() }
+                onBackupNow = { viewModel.createBackupNow() },
+                onShareBackup = { viewModel.shareLatestBackup(context) },
+                localBackupPath = viewModel.getLocalBackupFolderPath(),
+                googleDriveFolderUrl = viewModel.getGoogleDriveFolderUrl()
             )
 
             // ========== SECTION 2: AUTO BACKUP SETTINGS ==========
@@ -105,7 +124,10 @@ fun BackupRestoreScreen(
 
             // ========== SECTION 4: RESTORE OPTIONS ==========
             RestoreSection(
+                googleDriveConnected = uiState.googleDriveEnabled,
+                onBrowseFiles = { filePickerLauncher.launch(arrayOf("application/json", "*/*")) },
                 onFullRestore = { viewModel.showFullRestoreDialog() },
+                onDriveRestore = { viewModel.showDriveRestoreDialog() },
                 onTransactionRestore = { viewModel.showTransactionRestoreDialog() },
                 onEmergencyRestore = { viewModel.showEmergencyRestoreDialog() }
             )
@@ -143,6 +165,15 @@ fun BackupRestoreScreen(
             onDismiss = { viewModel.hideEmergencyRestoreDialog() }
         )
     }
+    
+    // Drive Restore Dialog
+    if (uiState.showDriveRestoreDialog) {
+        DriveRestoreDialog(
+            backups = uiState.driveBackups,
+            onRestore = { viewModel.restoreFromDrive(it.id) },
+            onDismiss = { viewModel.hideDriveRestoreDialog() }
+        )
+    }
 
     // Show success/error messages
     LaunchedEffect(uiState.message) {
@@ -164,8 +195,15 @@ private fun BackupStatusSection(
     googleDriveConnected: Boolean,
     lastDriveSync: String?,
     isLoading: Boolean,
-    onBackupNow: () -> Unit
+    onBackupNow: () -> Unit,
+    onShareBackup: () -> Unit,
+    localBackupPath: String,
+    googleDriveFolderUrl: String?
 ) {
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -206,8 +244,11 @@ private fun BackupStatusSection(
             
             Spacer(modifier = Modifier.height(4.dp))
             
-            // Google Drive status
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // Google Drive status with clickable link
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Icon(
                     if (googleDriveConnected) Icons.Default.CloudDone else Icons.Default.CloudOff,
                     contentDescription = null,
@@ -215,20 +256,44 @@ private fun BackupStatusSection(
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = if (googleDriveConnected) {
-                        "Google Drive: Connected${lastDriveSync?.let { " (synced $it)" } ?: ""}"
-                    } else {
-                        "Google Drive: Not connected"
-                    },
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = if (googleDriveConnected) {
+                            "Google Drive: Connected${lastDriveSync?.let { " (synced $it)" } ?: ""}"
+                        } else {
+                            "Google Drive: Not connected"
+                        },
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    // Google Drive folder link
+                    if (googleDriveConnected && googleDriveFolderUrl != null) {
+                        Text(
+                            text = "📂 Open in Drive",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.primary,
+                                textDecoration = TextDecoration.Underline
+                            ),
+                            modifier = Modifier
+                                .clickable {
+                                    try {
+                                        uriHandler.openUri(googleDriveFolderUrl)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Could not open Google Drive", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                                .padding(top = 2.dp)
+                        )
+                    }
+                }
             }
             
             Spacer(modifier = Modifier.height(4.dp))
             
-            // Local storage status
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            // Local storage status with path and share functionality
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Icon(
                     Icons.Default.Storage,
                     contentDescription = null,
@@ -236,10 +301,60 @@ private fun BackupStatusSection(
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Local backups: $totalBackups available${backupSize?.let { " ($it)" } ?: ""}",
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Local backups: $totalBackups available${backupSize?.let { " ($it)" } ?: ""}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    
+                    // Backup folder path (clickable to copy)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clickable {
+                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(localBackupPath))
+                                Toast.makeText(context, "Path copied to clipboard", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(top = 4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Folder,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = localBackupPath,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.primary
+                            ),
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            Icons.Default.ContentCopy,
+                            contentDescription = "Copy path",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                    
+                    // Share backup link
+                    Text(
+                        text = "📤 Share Latest Backup",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = MaterialTheme.colorScheme.primary,
+                            textDecoration = TextDecoration.Underline
+                        ),
+                        modifier = Modifier
+                            .clickable {
+                                onShareBackup()
+                            }
+                            .padding(top = 4.dp)
+                    )
+                }
             }
             
             Spacer(modifier = Modifier.height(16.dp))
@@ -455,7 +570,10 @@ private fun GoogleDriveSection(
 
 @Composable
 private fun RestoreSection(
+    googleDriveConnected: Boolean,
+    onBrowseFiles: () -> Unit,
     onFullRestore: () -> Unit,
+    onDriveRestore: () -> Unit,
     onTransactionRestore: () -> Unit,
     onEmergencyRestore: () -> Unit
 ) {
@@ -469,7 +587,24 @@ private fun RestoreSection(
             
             Spacer(modifier = Modifier.height(12.dp))
             
-            // Full Restore Button
+            // Browse & Select Backup Button (Primary option)
+            Button(
+                onClick = onBrowseFiles,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.FolderOpen, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Browse & Select Backup")
+            }
+            
+            Text(
+                "Open file manager to select a backup file",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 12.dp)
+            )
+            
+            // Full Restore Button (from app's backup list)
             OutlinedButton(
                 onClick = onFullRestore,
                 modifier = Modifier.fillMaxWidth()
@@ -480,11 +615,30 @@ private fun RestoreSection(
             }
             
             Text(
-                "Restore app to a selected date",
+                "Restore from app's backup list",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 8.dp)
             )
+            
+            // Drive Restore Button
+            if (googleDriveConnected) {
+                OutlinedButton(
+                    onClick = onDriveRestore,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Restore from Google Drive")
+                }
+                
+                Text(
+                    "Browse and restore from cloud backups",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 8.dp)
+                )
+            }
             
             // Transaction Restore Button (Coming Soon)
             OutlinedButton(
@@ -688,6 +842,75 @@ private fun EmergencyRestoreDialog(
                 )
             ) {
                 Text("Restore Now")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun DriveRestoreDialog(
+    backups: List<com.example.tabelahisabapp.data.backup.DriveBackupInfo>,
+    onRestore: (com.example.tabelahisabapp.data.backup.DriveBackupInfo) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var selectedBackup by remember { mutableStateOf<com.example.tabelahisabapp.data.backup.DriveBackupInfo?>(null) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { Icon(Icons.Default.CloudDownload, contentDescription = null) },
+        title = { Text("Restore from Google Drive") },
+        text = {
+            Column(
+                modifier = Modifier.heightIn(max = 300.dp)
+            ) {
+                if (backups.isEmpty()) {
+                    Text("No backups found in Google Drive")
+                } else {
+                    Text(
+                        "⚠️ Current data will be backed up first, then replaced.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    
+                    backups.take(15).forEach { backup ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedBackup == backup,
+                                onClick = { selectedBackup = backup }
+                            )
+                            Column {
+                                Text(
+                                    backup.name.removeSuffix(".json"),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    "${backup.sizeBytes / 1024} KB · ${java.text.SimpleDateFormat("MMM dd, yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(backup.createdTime))}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { selectedBackup?.let { onRestore(it) } },
+                enabled = selectedBackup != null
+            ) {
+                Text("Restore")
             }
         },
         dismissButton = {

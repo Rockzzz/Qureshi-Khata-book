@@ -1,0 +1,377 @@
+﻿Initialized native services in: C:\Users\Faisal Qureshi\.gradle\native
+Initialized jansi services in: C:\Users\Faisal Qureshi\.gradle\native
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.13/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Starting process 'Gradle build daemon'. Working directory: C:\Users\Faisal Qureshi\.gradle\daemon\8.13 Command: C:\Program Files\Android\Android Studio\jbr\bin\java.exe --add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.invoke=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.prefs/java.util.prefs=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED --add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.prefs/java.util.prefs=ALL-UNNAMED --add-opens=java.base/java.nio.charset=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED --add-opens=java.xml/javax.xml.namespace=ALL-UNNAMED -Xmx2048m -Dfile.encoding=UTF-8 -Duser.country=IN -Duser.language=en -Duser.variant -cp C:\Users\Faisal Qureshi\.gradle\wrapper\dists\gradle-8.13-bin\5xuhj0ry160q40clulazy9h7d\gradle-8.13\lib\gradle-daemon-main-8.13.jar -javaagent:C:\Users\Faisal Qureshi\.gradle\wrapper\dists\gradle-8.13-bin\5xuhj0ry160q40clulazy9h7d\gradle-8.13\lib\agents\gradle-instrumentation-agent-8.13.jar org.gradle.launcher.daemon.bootstrap.GradleDaemon 8.13
+Successfully started process 'Gradle build daemon'
+An attempt to start the daemon took 3.156 secs.
+The client will now receive all logging from the daemon (pid: 14808). The daemon log file: C:\Users\Faisal Qureshi\.gradle\daemon\8.13\daemon-14808.out.log
+Daemon will be stopped at the end of the build 
+Using 12 worker leases.
+Received JVM installation metadata from 'C:\Program Files\Android\Android Studio\jbr': {JAVA_HOME=C:\Program Files\Android\Android Studio\jbr, JAVA_VERSION=21.0.8, JAVA_VENDOR=JetBrains s.r.o., RUNTIME_NAME=OpenJDK Runtime Environment, RUNTIME_VERSION=21.0.8+-14196175-b1038.72, VM_NAME=OpenJDK 64-Bit Server VM, VM_VERSION=21.0.8+-14196175-b1038.72, VM_VENDOR=JetBrains s.r.o., OS_ARCH=amd64}
+Watching the file system is configured to be enabled if available
+Now considering [D:\Android App Repo\Qureshi-Khata-book] as hierarchies to watch
+File system watching is active
+Starting Build
+Settings evaluated using settings file 'D:\Android App Repo\Qureshi-Khata-book\settings.gradle.kts'.
+Projects loaded. Root project using build file 'D:\Android App Repo\Qureshi-Khata-book\build.gradle.kts'.
+Included projects: [root project 'tabelaHisabApp', project ':app']
+
+> Configure project :
+Evaluating root project 'tabelaHisabApp' using build file 'D:\Android App Repo\Qureshi-Khata-book\build.gradle.kts'.
+Resolved plugin [id: 'com.android.application', version: '8.13.2', apply: false]
+Resolved plugin [id: 'org.jetbrains.kotlin.android', version: '1.9.22', apply: false]
+Resolved plugin [id: 'com.google.dagger.hilt.android', version: '2.48', apply: false]
+
+> Configure project :app
+Evaluating project ':app' using build file 'D:\Android App Repo\Qureshi-Khata-book\app\build.gradle.kts'.
+Resolved plugin [id: 'com.android.application']
+Resolved plugin [id: 'org.jetbrains.kotlin.android']
+Resolved plugin [id: 'kotlin-kapt']
+Resolved plugin [id: 'com.google.dagger.hilt.android']
+Using default execution profile
+Using Kotlin Gradle Plugin gradle82 variant
+All projects evaluated.
+Task name matched 'assembleDebug'
+Selected primary task 'assembleDebug' from project :
+Tasks to be executed: [task ':app:preBuild', task ':app:preDebugBuild', task ':app:mergeDebugNativeDebugMetadata', task ':app:checkKotlinGradlePluginConfigurationErrors', task ':app:generateDebugBuildConfig', task ':app:checkDebugAarMetadata', task ':app:processDebugNavigationResources', task ':app:compileDebugNavigationResources', task ':app:generateDebugResValues', task ':app:mapDebugSourceSetPaths', task ':app:generateDebugResources', task ':app:mergeDebugResources', task ':app:packageDebugResources', task ':app:parseDebugLocalResources', task ':app:createDebugCompatibleScreenManifests', task ':app:extractDeepLinksDebug', task ':app:processDebugMainManifest', task ':app:processDebugManifest', task ':app:processDebugManifestForPackage', task ':app:processDebugResources', task ':app:kaptGenerateStubsDebugKotlin', task ':app:kaptDebugKotlin', task ':app:compileDebugKotlin', task ':app:javaPreCompileDebug', task ':app:compileDebugJavaWithJavac', task ':app:mergeDebugShaders', task ':app:compileDebugShaders', task ':app:generateDebugAssets', task ':app:mergeDebugAssets', task ':app:compressDebugAssets', task ':app:hiltAggregateDepsDebug', task ':app:hiltJavaCompileDebug', task ':app:processDebugJavaRes', task ':app:mergeDebugJavaResource', task ':app:checkDebugDuplicateClasses', task ':app:desugarDebugFileDependencies', task ':app:mergeExtDexDebug', task ':app:mergeLibDexDebug', task ':app:transformDebugClassesWithAsm', task ':app:dexBuilderDebug', task ':app:mergeProjectDexDebug', task ':app:mergeDebugJniLibFolders', task ':app:mergeDebugNativeLibs', task ':app:stripDebugDebugSymbols', task ':app:validateSigningDebug', task ':app:writeDebugAppMetadata', task ':app:writeDebugSigningConfigVersions', task ':app:packageDebug', task ':app:createDebugApkListingFileRedirect', task ':app:assembleDebug']
+Tasks that were excluded: []
+Resolve mutations for :app:preBuild (Thread[#94,Execution worker Thread 2,5,main]) started.
+:app:preBuild (Thread[#94,Execution worker Thread 2,5,main]) started.
+
+> Task :app:preBuild UP-TO-DATE
+Skipping task ':app:preBuild' as it has no actions.
+Resolve mutations for :app:preDebugBuild (Thread[#94,Execution worker Thread 2,5,main]) started.
+:app:preDebugBuild (Thread[#94,Execution worker Thread 2,5,main]) started.
+
+> Task :app:preDebugBuild UP-TO-DATE
+Skipping task ':app:preDebugBuild' as it has no actions.
+Resolve mutations for :app:mergeDebugNativeDebugMetadata (Thread[#92,included builds,5,main]) started.
+:app:mergeDebugNativeDebugMetadata (Thread[#92,included builds,5,main]) started.
+
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+Skipping task ':app:mergeDebugNativeDebugMetadata' as it has no source files and no previous output files.
+Resolve mutations for :app:checkKotlinGradlePluginConfigurationErrors (Thread[#92,included builds,5,main]) started.
+:app:checkKotlinGradlePluginConfigurationErrors (Thread[#92,included builds,5,main]) started.
+
+> Task :app:checkKotlinGradlePluginConfigurationErrors
+Caching disabled for task ':app:checkKotlinGradlePluginConfigurationErrors' because:
+  Build cache is disabled
+Task ':app:checkKotlinGradlePluginConfigurationErrors' is not up-to-date because:
+  Task has not declared any outputs despite executing actions.
+Resolve mutations for :app:generateDebugBuildConfig (Thread[#92,included builds,5,main]) started.
+:app:generateDebugBuildConfig (Thread[#92,included builds,5,main]) started.
+
+> Task :app:generateDebugBuildConfig UP-TO-DATE
+Caching disabled for task ':app:generateDebugBuildConfig' because:
+  Build cache is disabled
+Skipping task ':app:generateDebugBuildConfig' as it is up-to-date.
+Resolve mutations for :app:checkDebugAarMetadata (Thread[#92,included builds,5,main]) started.
+:app:checkDebugAarMetadata (Thread[#92,included builds,5,main]) started.
+
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':app:checkDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:checkDebugAarMetadata' as it is up-to-date.
+Resolve mutations for :app:processDebugNavigationResources (Thread[#95,Execution worker Thread 3,5,main]) started.
+:app:processDebugNavigationResources (Thread[#95,Execution worker Thread 3,5,main]) started.
+
+> Task :app:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':app:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':app:processDebugNavigationResources' as it is up-to-date.
+Resolve mutations for :app:compileDebugNavigationResources (Thread[#95,Execution worker Thread 3,5,main]) started.
+:app:compileDebugNavigationResources (Thread[#93,Execution worker,5,main]) started.
+
+> Task :app:compileDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':app:compileDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':app:compileDebugNavigationResources' as it is up-to-date.
+Resolve mutations for :app:generateDebugResValues (Thread[#93,Execution worker,5,main]) started.
+:app:generateDebugResValues (Thread[#95,Execution worker Thread 3,5,main]) started.
+
+> Task :app:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':app:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':app:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :app:mapDebugSourceSetPaths (Thread[#95,Execution worker Thread 3,5,main]) started.
+:app:mapDebugSourceSetPaths (Thread[#95,Execution worker Thread 3,5,main]) started.
+
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':app:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:mapDebugSourceSetPaths' as it is up-to-date.
+Resolve mutations for :app:generateDebugResources (Thread[#95,Execution worker Thread 3,5,main]) started.
+:app:generateDebugResources (Thread[#95,Execution worker Thread 3,5,main]) started.
+
+> Task :app:generateDebugResources UP-TO-DATE
+Caching disabled for task ':app:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:generateDebugResources' as it is up-to-date.
+Resolve mutations for :app:mergeDebugResources (Thread[#92,included builds,5,main]) started.
+:app:mergeDebugResources (Thread[#95,Execution worker Thread 3,5,main]) started.
+
+> Task :app:mergeDebugResources UP-TO-DATE
+Caching disabled for task ':app:mergeDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:mergeDebugResources' as it is up-to-date.
+Resolve mutations for :app:packageDebugResources (Thread[#95,Execution worker Thread 3,5,main]) started.
+:app:packageDebugResources (Thread[#95,Execution worker Thread 3,5,main]) started.
+
+> Task :app:packageDebugResources UP-TO-DATE
+Caching disabled for task ':app:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:packageDebugResources' as it is up-to-date.
+Resolve mutations for :app:parseDebugLocalResources (Thread[#95,Execution worker Thread 3,5,main]) started.
+:app:parseDebugLocalResources (Thread[#95,Execution worker Thread 3,5,main]) started.
+
+> Task :app:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':app:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':app:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :app:createDebugCompatibleScreenManifests (Thread[#95,Execution worker Thread 3,5,main]) started.
+:app:createDebugCompatibleScreenManifests (Thread[#92,included builds,5,main]) started.
+
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+Caching disabled for task ':app:createDebugCompatibleScreenManifests' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:createDebugCompatibleScreenManifests' as it is up-to-date.
+Resolve mutations for :app:extractDeepLinksDebug (Thread[#92,included builds,5,main]) started.
+:app:extractDeepLinksDebug (Thread[#92,included builds,5,main]) started.
+
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':app:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':app:extractDeepLinksDebug' as it is up-to-date.
+Resolve mutations for :app:processDebugMainManifest (Thread[#92,included builds,5,main]) started.
+:app:processDebugMainManifest (Thread[#92,included builds,5,main]) started.
+
+> Task :app:processDebugMainManifest UP-TO-DATE
+Caching disabled for task ':app:processDebugMainManifest' because:
+  Build cache is disabled
+Skipping task ':app:processDebugMainManifest' as it is up-to-date.
+Resolve mutations for :app:processDebugManifest (Thread[#92,included builds,5,main]) started.
+:app:processDebugManifest (Thread[#92,included builds,5,main]) started.
+
+> Task :app:processDebugManifest UP-TO-DATE
+Caching disabled for task ':app:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':app:processDebugManifest' as it is up-to-date.
+Resolve mutations for :app:processDebugManifestForPackage (Thread[#92,included builds,5,main]) started.
+:app:processDebugManifestForPackage (Thread[#98,Execution worker Thread 6,5,main]) started.
+
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+Custom actions are attached to task ':app:processDebugManifestForPackage'.
+Caching disabled for task ':app:processDebugManifestForPackage' because:
+  Build cache is disabled
+Skipping task ':app:processDebugManifestForPackage' as it is up-to-date.
+Resolve mutations for :app:processDebugResources (Thread[#98,Execution worker Thread 6,5,main]) started.
+:app:processDebugResources (Thread[#92,included builds,5,main]) started.
+
+> Task :app:processDebugResources UP-TO-DATE
+Caching disabled for task ':app:processDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:processDebugResources' as it is up-to-date.
+Resolve mutations for :app:kaptGenerateStubsDebugKotlin (Thread[#92,included builds,5,main]) started.
+:app:kaptGenerateStubsDebugKotlin (Thread[#92,included builds,5,main]) started.
+
+> Task :app:kaptGenerateStubsDebugKotlin UP-TO-DATE
+Caching disabled for task ':app:kaptGenerateStubsDebugKotlin' because:
+  Build cache is disabled
+Skipping task ':app:kaptGenerateStubsDebugKotlin' as it is up-to-date.
+Resolve mutations for :app:kaptDebugKotlin (Thread[#100,Execution worker Thread 8,5,main]) started.
+:app:kaptDebugKotlin (Thread[#100,Execution worker Thread 8,5,main]) started.
+
+> Task :app:kaptDebugKotlin
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\debug\kotlin', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\debug\kotlin', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\debug\java', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\debug\java', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\debug\kotlin', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\debug\java', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\main\kotlin', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\main\kotlin', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\main\kotlin', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\main\kotlin', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\main\kotlin', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\main\kotlin', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\debug\kotlin', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\debug\kotlin', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\debug\java', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\debug\java', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\debug\kotlin', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\debug\java', not found
+file or directory 'D:\Android App Repo\Qureshi-Khata-book\app\src\debug\java', not found
+Caching disabled for task ':app:kaptDebugKotlin' because:
+  Build cache is disabled
+Task ':app:kaptDebugKotlin' is not up-to-date because:
+  Task has failed previously.
+The input changes require a full rebuild for incremental task ':app:kaptDebugKotlin'.
+Running kapt annotation processing using the Gradle Worker API
+Using workers NONE isolation mode to run kapt
+
+Resolve mutations for :app:javaPreCompileDebug (Thread[#98,Execution worker Thread 6,5,main]) started.
+:app:javaPreCompileDebug (Thread[#98,Execution worker Thread 6,5,main]) started.
+
+> Task :app:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':app:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':app:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :app:mergeDebugShaders (Thread[#98,Execution worker Thread 6,5,main]) started.
+:app:mergeDebugShaders (Thread[#98,Execution worker Thread 6,5,main]) started.
+
+> Task :app:mergeDebugShaders UP-TO-DATE
+Caching disabled for task ':app:mergeDebugShaders' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':app:mergeDebugShaders' as it is up-to-date.
+Resolve mutations for :app:compileDebugShaders (Thread[#98,Execution worker Thread 6,5,main]) started.
+:app:compileDebugShaders (Thread[#98,Execution worker Thread 6,5,main]) started.
+
+> Task :app:compileDebugShaders NO-SOURCE
+Skipping task ':app:compileDebugShaders' as it has no source files and no previous output files.
+Resolve mutations for :app:generateDebugAssets (Thread[#95,Execution worker Thread 3,5,main]) started.
+:app:generateDebugAssets (Thread[#95,Execution worker Thread 3,5,main]) started.
+
+> Task :app:generateDebugAssets UP-TO-DATE
+Skipping task ':app:generateDebugAssets' as it has no actions.
+Resolve mutations for :app:mergeDebugAssets (Thread[#95,Execution worker Thread 3,5,main]) started.
+:app:mergeDebugAssets (Thread[#95,Execution worker Thread 3,5,main]) started.
+
+> Task :app:mergeDebugAssets UP-TO-DATE
+Caching disabled for task ':app:mergeDebugAssets' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':app:mergeDebugAssets' as it is up-to-date.
+Resolve mutations for :app:compressDebugAssets (Thread[#95,Execution worker Thread 3,5,main]) started.
+:app:compressDebugAssets (Thread[#95,Execution worker Thread 3,5,main]) started.
+
+> Task :app:compressDebugAssets UP-TO-DATE
+Caching disabled for task ':app:compressDebugAssets' because:
+  Build cache is disabled
+Skipping task ':app:compressDebugAssets' as it is up-to-date.
+Resolve mutations for :app:checkDebugDuplicateClasses (Thread[#95,Execution worker Thread 3,5,main]) started.
+:app:checkDebugDuplicateClasses (Thread[#95,Execution worker Thread 3,5,main]) started.
+
+> Task :app:checkDebugDuplicateClasses UP-TO-DATE
+Caching disabled for task ':app:checkDebugDuplicateClasses' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:checkDebugDuplicateClasses' as it is up-to-date.
+Resolve mutations for :app:desugarDebugFileDependencies (Thread[#95,Execution worker Thread 3,5,main]) started.
+:app:desugarDebugFileDependencies (Thread[#95,Execution worker Thread 3,5,main]) started.
+
+> Task :app:desugarDebugFileDependencies UP-TO-DATE
+Caching disabled for task ':app:desugarDebugFileDependencies' because:
+  Build cache is disabled
+Skipping task ':app:desugarDebugFileDependencies' as it is up-to-date.
+Resolve mutations for :app:mergeExtDexDebug (Thread[#93,Execution worker,5,main]) started.
+:app:mergeExtDexDebug (Thread[#93,Execution worker,5,main]) started.
+
+> Task :app:mergeExtDexDebug UP-TO-DATE
+Caching disabled for task ':app:mergeExtDexDebug' because:
+  Build cache is disabled
+Skipping task ':app:mergeExtDexDebug' as it is up-to-date.
+Resolve mutations for :app:mergeLibDexDebug (Thread[#93,Execution worker,5,main]) started.
+:app:mergeLibDexDebug (Thread[#93,Execution worker,5,main]) started.
+
+> Task :app:mergeLibDexDebug UP-TO-DATE
+Caching disabled for task ':app:mergeLibDexDebug' because:
+  Build cache is disabled
+Skipping task ':app:mergeLibDexDebug' as it is up-to-date.
+Resolve mutations for :app:mergeDebugJniLibFolders (Thread[#93,Execution worker,5,main]) started.
+:app:mergeDebugJniLibFolders (Thread[#103,Execution worker Thread 11,5,main]) started.
+
+> Task :app:mergeDebugJniLibFolders UP-TO-DATE
+Caching disabled for task ':app:mergeDebugJniLibFolders' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':app:mergeDebugJniLibFolders' as it is up-to-date.
+Resolve mutations for :app:mergeDebugNativeLibs (Thread[#103,Execution worker Thread 11,5,main]) started.
+:app:mergeDebugNativeLibs (Thread[#103,Execution worker Thread 11,5,main]) started.
+
+> Task :app:mergeDebugNativeLibs NO-SOURCE
+Skipping task ':app:mergeDebugNativeLibs' as it has no source files and no previous output files.
+Resolve mutations for :app:stripDebugDebugSymbols (Thread[#103,Execution worker Thread 11,5,main]) started.
+:app:stripDebugDebugSymbols (Thread[#103,Execution worker Thread 11,5,main]) started.
+
+> Task :app:stripDebugDebugSymbols NO-SOURCE
+Skipping task ':app:stripDebugDebugSymbols' as it has no source files and no previous output files.
+Resolve mutations for :app:validateSigningDebug (Thread[#92,included builds,5,main]) started.
+:app:validateSigningDebug (Thread[#92,included builds,5,main]) started.
+
+> Task :app:validateSigningDebug UP-TO-DATE
+Caching disabled for task ':app:validateSigningDebug' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:validateSigningDebug' as it is up-to-date.
+Resolve mutations for :app:writeDebugAppMetadata (Thread[#92,included builds,5,main]) started.
+:app:writeDebugAppMetadata (Thread[#92,included builds,5,main]) started.
+
+> Task :app:writeDebugAppMetadata UP-TO-DATE
+Caching disabled for task ':app:writeDebugAppMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:writeDebugAppMetadata' as it is up-to-date.
+Resolve mutations for :app:writeDebugSigningConfigVersions (Thread[#99,Execution worker Thread 7,5,main]) started.
+:app:writeDebugSigningConfigVersions (Thread[#92,included builds,5,main]) started.
+
+> Task :app:writeDebugSigningConfigVersions UP-TO-DATE
+Caching disabled for task ':app:writeDebugSigningConfigVersions' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:writeDebugSigningConfigVersions' as it is up-to-date.
+
+> Task :app:kaptDebugKotlin
+.\gradlew.bat : D:\Android App Repo\Qureshi-Khata-book\app\build\tmp\kapt3\stubs\
+debug\com\example\tabelahisabapp\data\db\dao\CustomerTransactionDao.java:58: 
+error: The columns returned by the query does not have the fields 
+[openingBalance] in 
+com.example.tabelahisabapp.data.db.models.TransactionWithCustomer even though 
+they are annotated as non-null or primitive. Columns returned by the query: [id,c
+ustomerId,type,amount,date,note,voiceNotePath,paymentMethod,createdAt,cust_id,cus
+t_name,cust_phone,cust_type,cust_createdAt]
+At line:1 char:65
++ ... tudio\jbr"; .\gradlew.bat assembleDebug --no-daemon --info 2>&1 | Out ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\Android App ...cust_createdAt]:S 
+   tring) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    public abstract kotlinx.coroutines.flow.Flow<java.util.List<com.example.tabel
+ahisabapp.data.db.models.TransactionWithCustomer>> 
+getTransactionsByDateWithCustomer(long date);
+                                                                                 
+                                                   ^
+D:\Android App Repo\Qureshi-Khata-book\app\build\tmp\kapt3\stubs\debug\com\example\tabelahisabapp\data\db\dao\CustomerTransactionDao.java:58: warning:  com.example.tabelahisabapp.data.db.models.TransactionWithCustomer has some fields [cust_email, cust_businessName, cust_category, cust_openingBalance, cust_notes] which are not returned by the query. If they are not supposed to be read from the result, you can mark them with @Ignore annotation. You can suppress this warning by annotating the method with @SuppressWarnings(RoomWarnings.CURSOR_MISMATCH). Columns returned by the query: id, customerId, type, amount, date, note, voiceNotePath, paymentMethod, createdAt, cust_id, cust_name, cust_phone, cust_type, cust_createdAt.
+    public abstract kotlinx.coroutines.flow.Flow<java.util.List<com.example.tabelahisabapp.data.db.models.TransactionWithCustomer>> getTransactionsByDateWithCustomer(long date);
+                                                                                                                                    ^
+
+> Task :app:kaptDebugKotlin FAILED
+
+[Incubating] Problems report is available at: file:///D:/Android%20App%20Repo/Qureshi-Khata-book/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:kaptDebugKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.gradle.internal.KaptWit
+houtKotlincTask$KaptExecutionWorkAction
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/8.13/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 58s
+31 actionable tasks: 2 executed, 29 up-to-date
+Watched directory hierarchies: [D:\Android App Repo\Qureshi-Khata-book]

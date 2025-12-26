@@ -1,19 +1,28 @@
 package com.example.tabelahisabapp.ui.trading
 
 import android.app.DatePickerDialog
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.CalendarToday
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -21,17 +30,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
-import kotlinx.coroutines.flow.first
+import com.example.tabelahisabapp.ui.theme.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+
+// Premium colors for trade screen
+private val GradientStart = Color(0xFF667EEA)
+private val GradientEnd = Color(0xFF764BA2)
+private val CardBg = Color.White
+private val SectionBg = Color(0xFFF8FAFC)
+private val ProfitGreen = Color(0xFF10B981)
+private val LossRed = Color(0xFFEF4444)
+private val InfoBlue = Color(0xFF3B82F6)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTradeTransactionScreen(
     viewModel: TradingViewModel = hiltViewModel(),
     savedStateHandle: SavedStateHandle? = null,
-    farmId: Int? = null, // When adding from inside a farm
+    farmId: Int? = null,
     onTransactionSaved: () -> Unit,
     onCancel: () -> Unit,
     onNavigateToSettings: () -> Unit = {}
@@ -42,33 +60,28 @@ fun AddTradeTransactionScreen(
     val transactionId = savedStateHandle?.get<Int>("transactionId")
     val isEditMode = transactionId != null
     
-    // Get farm info if farmId provided
     val allFarms by viewModel.allFarms.collectAsState()
     val selectedFarm = farmId?.let { id -> allFarms.find { it.id == id } }
     
-    // Removed type - all transactions are the same now
-    var location by remember { mutableStateOf("") } // Location: "Deonar" or "Allana"
-    var itemName by remember { mutableStateOf("") } // Buffalo/Item name
-    var quantity by remember { mutableStateOf("") } // Number of buffalo
-    var buyingAmount by remember { mutableStateOf("") } // Full buying amount for buffalo
-    var weight by remember { mutableStateOf("") } // Weight in kg
-    var rate by remember { mutableStateOf("") } // Rate per kg
-    var extraBonus by remember { mutableStateOf("") } // Extra bonus amount
-    // Allana-specific fields
-    var weightLessFeePerBuffalo by remember { mutableStateOf("") } // Weight less fee per buffalo
-    var feePerBuffalo by remember { mutableStateOf("") } // Fee per buffalo (new field)
-    // netWeightAfterLess and tdsPerBuffalo are auto-calculated
+    // Form state
+    var location by remember { mutableStateOf("") }
+    var itemName by remember { mutableStateOf("") }
+    var quantity by remember { mutableStateOf("") }
+    var buyingAmount by remember { mutableStateOf("") }
+    var weight by remember { mutableStateOf("") }
+    var rate by remember { mutableStateOf("") }
+    var extraBonus by remember { mutableStateOf("") }
+    var weightLessFeePerBuffalo by remember { mutableStateOf("") }
+    var feePerBuffalo by remember { mutableStateOf("") }
     var date by remember { mutableStateOf(System.currentTimeMillis()) }
     var note by remember { mutableStateOf("") }
     var originalCreatedAt by remember { mutableStateOf<Long?>(null) }
+    var editFarmId by remember { mutableStateOf<Int?>(null) } // Store farmId from original trade
     
     val allTrades by viewModel.allTrades.collectAsState()
-    val uniqueItems = remember(allTrades) {
-        allTrades.map { it.itemName }.distinct().sorted()
-    }
-    
-    val locationOptions = listOf("Deonar", "Allana")
-    val isAllanaSelected = location == "Allana"
+    val locationOptions = listOf("Deonar", "Allana", "Al Qureshi")
+    val animalOptions = listOf("Buffalo", "Goat", "Other")
+    val isAllanaSelected = location in listOf("Allana", "Al Qureshi")
 
     // Load transaction data when editing
     LaunchedEffect(transactionId, allTrades) {
@@ -77,14 +90,19 @@ fun AddTradeTransactionScreen(
                 location = trade.deonar ?: ""
                 itemName = trade.itemName
                 quantity = trade.quantity.toString()
-                buyingAmount = trade.buyRate.toString() // Use buyRate as buyingAmount
+                buyingAmount = trade.buyRate.toString()
                 weight = trade.weight?.toString() ?: ""
                 rate = trade.rate?.toString() ?: ""
                 extraBonus = trade.extraBonus?.toString() ?: ""
-                // Note: Allana-specific fields would need to be stored in note or new fields
+                // Load Allana-specific fields
+                weightLessFeePerBuffalo = if (trade.weight != null && trade.netWeight != null) {
+                    (trade.weight - trade.netWeight).toString()
+                } else ""
+                feePerBuffalo = trade.fee?.toString() ?: ""
                 date = trade.date
                 note = trade.note ?: ""
                 originalCreatedAt = trade.createdAt
+                editFarmId = trade.farmId // Preserve farmId for update
             }
         }
     }
@@ -111,26 +129,32 @@ fun AddTradeTransactionScreen(
     val extraBonusValue = extraBonus.toDoubleOrNull() ?: 0.0
     val quantityValue = quantity.toIntOrNull() ?: 0
     val weightLessFeeValue = weightLessFeePerBuffalo.toDoubleOrNull() ?: 0.0
+    val feeValue = feePerBuffalo.toDoubleOrNull() ?: 0.0
     
-    // Total = (Weight * Rate) + Extra Bonus
-    val totalAmount = (weightValue * rateValue) + extraBonusValue
-    
-    // Allana-specific auto-calculations
-    // Net Weight = Weight - Weight Less Fee (auto-calculated)
     val netWeightAfterLess = if (isAllanaSelected && weightValue > 0) {
         weightValue - weightLessFeeValue
     } else {
-        0.0
+        weightValue
     }
     
-    // TDS = 0.10% of Total Amount (auto-calculated)
-    val tdsPerBuffalo = if (isAllanaSelected && totalAmount > 0) {
-        totalAmount * 0.001 // 0.10% = 0.001
+    val grossAmount = if (isAllanaSelected) {
+        (netWeightAfterLess * rateValue) + extraBonusValue
+    } else {
+        (weightValue * rateValue) + extraBonusValue
+    }
+    
+    val tdsPerBuffalo = if (isAllanaSelected && grossAmount > 0) {
+        grossAmount * 0.001
     } else {
         0.0
     }
     
-    // Profit = Total - Buying Amount (automatically calculated)
+    val totalAmount = if (isAllanaSelected) {
+        grossAmount - feeValue - tdsPerBuffalo
+    } else {
+        grossAmount
+    }
+    
     val profit = if (totalAmount > 0 && buyingAmountValue > 0) {
         totalAmount - buyingAmountValue
     } else {
@@ -138,31 +162,111 @@ fun AddTradeTransactionScreen(
     }
 
     Scaffold(
+        containerColor = SectionBg,
         topBar = {
-            TopAppBar(
-                title = { 
-                    Column {
-                        Text(if (isEditMode) "Edit Trade" else "Add Trade")
+            // Premium gradient header
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        brush = Brush.linearGradient(
+                            colors = listOf(GradientStart, GradientEnd)
+                        )
+                    )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = onCancel) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = Color.White
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isEditMode) "Edit Trade" else "Add Trade",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
                         selectedFarm?.let {
                             Text(
                                 text = "Farm: ${it.name}",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.8f)
                             )
                         }
                     }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onCancel) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
                     IconButton(onClick = onNavigateToSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = Color.White
+                        )
                     }
                 }
-            )
+            }
+        },
+        bottomBar = {
+            // Sticky save button
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shadowElevation = 8.dp,
+                color = CardBg
+            ) {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            viewModel.saveTrade(
+                                type = "TRADE",
+                                deonar = location.ifBlank { null },
+                                itemName = itemName.trim(),
+                                quantity = quantityValue,
+                                buyRate = buyingAmountValue,
+                                weight = weightValue.takeIf { it > 0 },
+                                rate = rateValue.takeIf { it > 0 },
+                                extraBonus = extraBonusValue.takeIf { it > 0 },
+                                netWeight = if (isAllanaSelected) netWeightAfterLess.takeIf { it > 0 } else null,
+                                fee = if (isAllanaSelected) feeValue.takeIf { it > 0 } else null,
+                                tds = if (isAllanaSelected) tdsPerBuffalo.takeIf { it > 0 } else null,
+                                totalAmount = totalAmount,
+                                profit = profit,
+                                pricePerUnit = buyingAmountValue,
+                                date = date,
+                                note = note.ifBlank { null },
+                                transactionId = transactionId,
+                                originalCreatedAt = originalCreatedAt,
+                                farmId = if (isEditMode) editFarmId else farmId,
+                                entryNumber = null
+                            )
+                            onTransactionSaved()
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .height(56.dp),
+                    enabled = itemName.isNotBlank() && quantityValue > 0 && buyingAmountValue > 0,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = GradientStart,
+                        disabledContainerColor = Color.Gray.copy(alpha = 0.3f)
+                    )
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isEditMode) "Update Trade" else "Save Trade",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                }
+            }
         }
     ) { paddingValues ->
         Column(
@@ -170,328 +274,455 @@ fun AddTradeTransactionScreen(
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-
-            // Date
-            OutlinedTextField(
-                value = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(date)),
-                onValueChange = { },
-                label = { Text("Date") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { datePickerDialog.show() },
-                readOnly = true,
-                trailingIcon = {
-                    IconButton(onClick = { datePickerDialog.show() }) {
-                        Icon(Icons.Default.CalendarToday, contentDescription = "Select Date")
-                    }
-                }
-            )
-
-            // Location (Deonar or Allana)
-            var locationExpanded by remember { mutableStateOf(false) }
-            ExposedDropdownMenuBox(
-                expanded = locationExpanded,
-                onExpandedChange = { locationExpanded = it }
-            ) {
-                OutlinedTextField(
-                    value = location,
-                    onValueChange = { },
-                    label = { Text("Location") },
-                    placeholder = { Text("Select Location") },
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth()
-                        .clickable { locationExpanded = true },
-                    readOnly = true,
-                    singleLine = true,
-                    trailingIcon = {
-                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = locationExpanded)
-                    }
-                )
-                ExposedDropdownMenu(
-                    expanded = locationExpanded,
-                    onDismissRequest = { locationExpanded = false }
-                ) {
-                    locationOptions.forEach { loc ->
-                        DropdownMenuItem(
-                            text = { Text(loc) },
-                            onClick = {
-                                location = loc
-                                locationExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
-
-            // Item Name (Buffalo/Goat) - Fixed Dropdown
-            val animalOptions = listOf("Buffalo", "Goat", "Other")
-            var itemNameExpanded by remember { mutableStateOf(false) }
-            ExposedDropdownMenuBox(
-                expanded = itemNameExpanded,
-                onExpandedChange = { itemNameExpanded = it }
-            ) {
-                OutlinedTextField(
-                    value = itemName,
-                    onValueChange = { },
-                    label = { Text("Item Name") },
-                    placeholder = { Text("Select Animal") },
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth()
-                        .clickable { itemNameExpanded = true },
-                    readOnly = true,
-                    singleLine = true,
-                    trailingIcon = {
-                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = itemNameExpanded)
-                    }
-                )
-                ExposedDropdownMenu(
-                    expanded = itemNameExpanded,
-                    onDismissRequest = { itemNameExpanded = false }
-                ) {
-                    animalOptions.forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(option) },
-                            onClick = {
-                                itemName = option
-                                itemNameExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
-
-            // Quantity (Buffalo count)
-            OutlinedTextField(
-                value = quantity,
-                onValueChange = { quantity = it },
-                label = { Text("Count (Quantity)") },
-                placeholder = { Text("1") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true
-            )
-
-            // Buying Amount (full amount paid for buffalo)
-            OutlinedTextField(
-                value = buyingAmount,
-                onValueChange = { buyingAmount = it },
-                label = { Text("Buying Amount") },
-                placeholder = { Text("Full amount paid") },
-                prefix = { Text("₹") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true
-            )
-
-            // Weight
-            OutlinedTextField(
-                value = weight,
-                onValueChange = { weight = it },
-                label = { Text("Weight (kg)") },
-                suffix = { Text("kg") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true
-            )
-
-            // Rate (per kg)
-            OutlinedTextField(
-                value = rate,
-                onValueChange = { rate = it },
-                label = { Text("Rate (per kg)") },
-                prefix = { Text("₹") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true
-            )
-
-            // Extra Bonus
-            OutlinedTextField(
-                value = extraBonus,
-                onValueChange = { extraBonus = it },
-                label = { Text("Extra Bonus") },
-                prefix = { Text("₹") },
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                singleLine = true
-            )
-
-            // Allana-specific fields
-            if (isAllanaSelected) {
-                Divider(modifier = Modifier.padding(vertical = 8.dp))
-                Text("Allana Specific Fields", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                
-                // Weight Less Fee Per Buffalo
-                OutlinedTextField(
-                    value = weightLessFeePerBuffalo,
-                    onValueChange = { weightLessFeePerBuffalo = it },
-                    label = { Text("Weight Less Fee (per buffalo)") },
-                    suffix = { Text("kg") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true
-                )
-                
-                // Fee Per Buffalo (new field)
-                OutlinedTextField(
-                    value = feePerBuffalo,
-                    onValueChange = { feePerBuffalo = it },
-                    label = { Text("Fee (per buffalo)") },
-                    prefix = { Text("₹") },
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true
-                )
-                
-                // Net Weight After Less (Auto-calculated)
-                OutlinedTextField(
-                    value = String.format("%.2f", netWeightAfterLess),
-                    onValueChange = { }, // Read-only
-                    label = { Text("Net Weight After Less (Auto)") },
-                    suffix = { Text("kg") },
-                    modifier = Modifier.fillMaxWidth(),
-                    readOnly = true,
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                        disabledBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+            // Section 1: Basic Info Card
+            PremiumCard(title = "Basic Info", icon = Icons.Default.Info) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Date Picker
+                    PremiumField(
+                        label = "Date",
+                        value = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(date)),
+                        onClick = { datePickerDialog.show() },
+                        leadingIcon = Icons.Default.CalendarToday,
+                        trailingIcon = Icons.Default.ChevronRight
                     )
-                )
-                
-                // TDS 0.10% Per Buffalo
-                OutlinedTextField(
-                    value = String.format("%.2f", tdsPerBuffalo),
-                    onValueChange = { }, // Read-only
-                    label = { Text("TDS 0.10% (Auto)") },
-                    prefix = { Text("₹") },
-                    modifier = Modifier.fillMaxWidth(),
-                    readOnly = true,
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
-                        disabledBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                    
+                    // Location Dropdown
+                    var locationExpanded by remember { mutableStateOf(false) }
+                    PremiumDropdown(
+                        label = "Location",
+                        value = location.ifBlank { "Select Location" },
+                        expanded = locationExpanded,
+                        onExpandedChange = { locationExpanded = it },
+                        options = locationOptions,
+                        onOptionSelected = { 
+                            location = it
+                            locationExpanded = false
+                        },
+                        leadingIcon = Icons.Default.LocationOn
                     )
-                )
+                    
+                    // Animal Type Dropdown
+                    var itemNameExpanded by remember { mutableStateOf(false) }
+                    PremiumDropdown(
+                        label = "Animal",
+                        value = itemName.ifBlank { "Select Animal" },
+                        expanded = itemNameExpanded,
+                        onExpandedChange = { itemNameExpanded = it },
+                        options = animalOptions,
+                        onOptionSelected = { 
+                            itemName = it
+                            itemNameExpanded = false
+                        },
+                        leadingIcon = Icons.Default.Pets
+                    )
+                    
+                    // Quantity
+                    PremiumTextField(
+                        value = quantity,
+                        onValueChange = { quantity = it.filter { c -> c.isDigit() } },
+                        label = "Count",
+                        placeholder = "1",
+                        leadingIcon = Icons.Default.Numbers,
+                        keyboardType = KeyboardType.Number
+                    )
+                }
             }
-
-            Divider()
-
-            // Calculated Total
-            val indianFormat = java.text.NumberFormat.getCurrencyInstance(Locale("en", "IN"))
             
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                )
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+            // Section 2: Purchase Details Card
+            PremiumCard(title = "Purchase Details", icon = Icons.Default.ShoppingCart) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    PremiumTextField(
+                        value = buyingAmount,
+                        onValueChange = { buyingAmount = it.filter { c -> c.isDigit() || c == '.' } },
+                        label = "Buying Amount",
+                        placeholder = "Full amount paid",
+                        prefix = "₹",
+                        leadingIcon = Icons.Default.Payment,
+                        keyboardType = KeyboardType.Decimal
+                    )
+                }
+            }
+            
+            // Section 3: Selling Details Card
+            PremiumCard(title = "Selling Details", icon = Icons.Default.Sell) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("Total:", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Text(
-                            indianFormat.format(totalAmount),
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
+                        PremiumTextField(
+                            value = weight,
+                            onValueChange = { weight = it.filter { c -> c.isDigit() || c == '.' } },
+                            label = "Weight",
+                            placeholder = "0",
+                            suffix = "kg",
+                            leadingIcon = Icons.Default.Scale,
+                            keyboardType = KeyboardType.Decimal,
+                            modifier = Modifier.weight(1f)
+                        )
+                        PremiumTextField(
+                            value = rate,
+                            onValueChange = { rate = it.filter { c -> c.isDigit() || c == '.' } },
+                            label = "Rate/kg",
+                            placeholder = "0",
+                            prefix = "₹",
+                            leadingIcon = Icons.Default.CurrencyRupee,
+                            keyboardType = KeyboardType.Decimal,
+                            modifier = Modifier.weight(1f)
                         )
                     }
-                    Text(
-                        "= (Weight × Rate) + Bonus",
-                        fontSize = 12.sp,
-                        color = Color.Gray
+                    
+                    PremiumTextField(
+                        value = extraBonus,
+                        onValueChange = { extraBonus = it.filter { c -> c.isDigit() || c == '.' } },
+                        label = "Extra Bonus",
+                        placeholder = "0",
+                        prefix = "₹",
+                        leadingIcon = Icons.Default.CardGiftcard,
+                        keyboardType = KeyboardType.Decimal
                     )
                 }
             }
-
-            // Profit (automatically calculated)
-            if (profit != null) {
-                val isProfit = profit >= 0
-                val formattedProfit = indianFormat.format(profit)
-                
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isProfit) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)
-                    )
+            
+            // Section 4: Allana Specific (Conditional)
+            AnimatedVisibility(
+                visible = isAllanaSelected,
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                PremiumCard(
+                    title = "Allana/Al Qureshi Deductions", 
+                    icon = Icons.Default.Remove,
+                    accentColor = LossRed
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Text(if (isProfit) "Profit:" else "Loss:", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Text(
-                                formattedProfit,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isProfit) Color(0xFF2E7D32) else Color(0xFFC62828)
+                            PremiumTextField(
+                                value = weightLessFeePerBuffalo,
+                                onValueChange = { weightLessFeePerBuffalo = it.filter { c -> c.isDigit() || c == '.' } },
+                                label = "Weight Less",
+                                placeholder = "0",
+                                suffix = "kg",
+                                keyboardType = KeyboardType.Decimal,
+                                modifier = Modifier.weight(1f)
+                            )
+                            PremiumTextField(
+                                value = feePerBuffalo,
+                                onValueChange = { feePerBuffalo = it.filter { c -> c.isDigit() || c == '.' } },
+                                label = "Fee",
+                                placeholder = "0",
+                                prefix = "₹",
+                                keyboardType = KeyboardType.Decimal,
+                                modifier = Modifier.weight(1f)
                             )
                         }
-                        Text(
-                            "= Total - Buying Amount",
-                            fontSize = 12.sp,
-                            color = Color.Gray
-                        )
+                        
+                        // Auto-calculated fields (read-only display)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(SectionBg, RoundedCornerShape(12.dp))
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("Net Weight", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                                Text("${String.format("%.1f", netWeightAfterLess)} kg", fontWeight = FontWeight.Bold)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("TDS (0.10%)", style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                                Text("₹${String.format("%.0f", tdsPerBuffalo)}", fontWeight = FontWeight.Bold, color = LossRed)
+                            }
+                        }
                     }
                 }
             }
-
-            // Note
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it },
-                label = { Text("Note (Optional)") },
-                modifier = Modifier.fillMaxWidth(),
-                maxLines = 3
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Save button
-            Button(
-                onClick = {
-                    scope.launch {
-                        viewModel.saveTrade(
-                            type = "TRADE", // Default type for all transactions
-                            deonar = location.ifBlank { null },
-                            itemName = itemName.trim(),
-                            quantity = quantityValue,
-                            buyRate = buyingAmountValue, // Use buyingAmount as buyRate
-                            weight = weightValue.takeIf { it > 0 },
-                            rate = rateValue.takeIf { it > 0 },
-                            extraBonus = extraBonusValue.takeIf { it > 0 },
-                            totalAmount = totalAmount,
-                            profit = profit,
-                            pricePerUnit = buyingAmountValue, // Keep for backward compatibility
-                            date = date,
-                            note = note.ifBlank { null },
-                            transactionId = transactionId,
-                            originalCreatedAt = originalCreatedAt,
-                            farmId = farmId,
-                            entryNumber = null // Auto-generated if needed
-                        )
-                        onTransactionSaved()
+            
+            // Section 5: Calculation Summary
+            if (totalAmount > 0) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .shadow(8.dp, RoundedCornerShape(16.dp)),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = CardBg)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Total Amount
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Total Amount", fontWeight = FontWeight.Medium, color = TextSecondary)
+                            Text(
+                                "₹${String.format("%,.0f", totalAmount)}",
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GradientStart
+                            )
+                        }
+                        
+                        if (isAllanaSelected) {
+                            Text(
+                                "= (${String.format("%.1f", netWeightAfterLess)} kg × ₹${String.format("%.0f", rateValue)}) + ₹${String.format("%.0f", extraBonusValue)} - Fee - TDS",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextSecondary
+                            )
+                        }
+                        
+                        HorizontalDivider(color = BorderGray)
+                        
+                        // Profit/Loss
+                        profit?.let { p ->
+                            val isProfit = p >= 0
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        if (isProfit) ProfitGreen.copy(alpha = 0.1f) else LossRed.copy(alpha = 0.1f),
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        if (isProfit) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
+                                        contentDescription = null,
+                                        tint = if (isProfit) ProfitGreen else LossRed
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        if (isProfit) "Profit" else "Loss",
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isProfit) ProfitGreen else LossRed
+                                    )
+                                }
+                                Text(
+                                    "₹${String.format("%,.0f", kotlin.math.abs(p))}",
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isProfit) ProfitGreen else LossRed
+                                )
+                            }
+                        }
                     }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = itemName.isNotBlank() && quantityValue > 0 && buyingAmountValue > 0
-            ) {
-                Text("Save Transaction")
+                }
             }
+            
+            // Section 6: Note
+            PremiumCard(title = "Note", icon = Icons.Default.Notes) {
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    placeholder = { Text("Add optional note...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedBorderColor = BorderGray,
+                        focusedBorderColor = GradientStart
+                    ),
+                    maxLines = 3
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(80.dp)) // Space for bottom bar
+        }
+    }
+}
 
-            // Cancel button
-            OutlinedButton(
-                onClick = onCancel,
-                modifier = Modifier.fillMaxWidth()
+// Premium Card Component
+@Composable
+private fun PremiumCard(
+    title: String,
+    icon: ImageVector,
+    accentColor: Color = GradientStart,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(4.dp, RoundedCornerShape(16.dp)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBg)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 12.dp)
             ) {
-                Text("Cancel")
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(accentColor.copy(alpha = 0.1f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        tint = accentColor,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            content()
+        }
+    }
+}
+
+// Premium TextField Component
+@Composable
+private fun PremiumTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    placeholder: String = "",
+    prefix: String? = null,
+    suffix: String? = null,
+    leadingIcon: ImageVector? = null,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = TextSecondary,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = { Text(placeholder, color = TextSecondary.copy(alpha = 0.5f)) },
+            prefix = prefix?.let { { Text(it, fontWeight = FontWeight.Bold) } },
+            suffix = suffix?.let { { Text(it, color = TextSecondary) } },
+            leadingIcon = leadingIcon?.let { { Icon(it, null, tint = GradientStart) } },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                unfocusedBorderColor = BorderGray,
+                focusedBorderColor = GradientStart,
+                unfocusedContainerColor = SectionBg,
+                focusedContainerColor = Color.White
+            ),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            singleLine = true
+        )
+    }
+}
+
+// Premium Dropdown Component
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PremiumDropdown(
+    label: String,
+    value: String,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    options: List<String>,
+    onOptionSelected: (String) -> Unit,
+    leadingIcon: ImageVector? = null
+) {
+    Column {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = TextSecondary,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = onExpandedChange
+        ) {
+            OutlinedTextField(
+                value = value,
+                onValueChange = { },
+                readOnly = true,
+                leadingIcon = leadingIcon?.let { { Icon(it, null, tint = GradientStart) } },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                modifier = Modifier
+                    .menuAnchor()
+                    .fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedBorderColor = BorderGray,
+                    focusedBorderColor = GradientStart,
+                    unfocusedContainerColor = SectionBg,
+                    focusedContainerColor = Color.White
+                ),
+                singleLine = true
+            )
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { onExpandedChange(false) }
+            ) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option) },
+                        onClick = { onOptionSelected(option) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+// Premium Field Component (for read-only clickable fields)
+@Composable
+private fun PremiumField(
+    label: String,
+    value: String,
+    onClick: () -> Unit,
+    leadingIcon: ImageVector? = null,
+    trailingIcon: ImageVector? = null
+) {
+    Column {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = TextSecondary,
+            modifier = Modifier.padding(bottom = 4.dp)
+        )
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick),
+            shape = RoundedCornerShape(12.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, BorderGray),
+            color = SectionBg
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                leadingIcon?.let {
+                    Icon(it, null, tint = GradientStart, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
+                Text(
+                    value,
+                    modifier = Modifier.weight(1f),
+                    fontWeight = FontWeight.Medium
+                )
+                trailingIcon?.let {
+                    Icon(it, null, tint = TextSecondary, modifier = Modifier.size(20.dp))
+                }
             }
         }
     }

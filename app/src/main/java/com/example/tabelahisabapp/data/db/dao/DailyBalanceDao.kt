@@ -19,12 +19,21 @@ interface DailyBalanceDao {
 
     @Query("SELECT * FROM daily_balances WHERE date = :date")
     fun getDailyBalanceByDate(date: Long): Flow<DailyBalance?>
+    
+    @Query("SELECT * FROM daily_balances WHERE date = :date")
+    suspend fun getBalanceByDateSync(date: Long): DailyBalance?
 
     @Query("SELECT * FROM daily_balances ORDER BY date DESC")
     fun getAllDailyBalances(): Flow<List<DailyBalance>>
+    
+    @Query("SELECT * FROM daily_balances WHERE date >= :fromDate ORDER BY date ASC")
+    suspend fun getBalancesFromDate(fromDate: Long): List<DailyBalance>
 
     @Query("SELECT * FROM daily_balances WHERE date < :currentDate ORDER BY date DESC LIMIT 1")
     fun getPreviousDayBalance(currentDate: Long): Flow<DailyBalance?>
+    
+    @Query("SELECT * FROM daily_balances WHERE date < :currentDate ORDER BY date DESC LIMIT 1")
+    suspend fun getPreviousDayBalanceSync(currentDate: Long): DailyBalance?
     
     // Backup methods
     @Query("SELECT * FROM daily_balances")

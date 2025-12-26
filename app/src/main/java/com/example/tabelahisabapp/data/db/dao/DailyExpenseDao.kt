@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import com.example.tabelahisabapp.data.db.entity.DailyExpense
 import kotlinx.coroutines.flow.Flow
 
@@ -12,12 +13,27 @@ import kotlinx.coroutines.flow.Flow
 interface DailyExpenseDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertExpense(expense: DailyExpense)
+    
+    @Update
+    suspend fun update(expense: DailyExpense)
+    
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertExpenseAndGetId(expense: DailyExpense): Long
 
     @Query("SELECT * FROM daily_expenses WHERE date = :date")
     fun getExpensesByDate(date: Long): Flow<List<DailyExpense>>
+    
+    @Query("SELECT * FROM daily_expenses WHERE id = :expenseId")
+    suspend fun getExpenseById(expenseId: Int): DailyExpense?
+
+    @Query("SELECT * FROM daily_expenses ORDER BY date DESC")
+    fun getAllExpenses(): Flow<List<DailyExpense>>
 
     @Delete
     suspend fun deleteExpense(expense: DailyExpense)
+    
+    @Query("DELETE FROM daily_expenses WHERE id = :expenseId")
+    suspend fun deleteExpenseById(expenseId: Int)
 
     @Query("DELETE FROM daily_expenses WHERE date = :date")
     suspend fun deleteExpensesForDate(date: Long)

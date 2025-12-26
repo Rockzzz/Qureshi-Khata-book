@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.tabelahisabapp.ui.theme.*
+import com.example.tabelahisabapp.ui.expense.expenseCategories
 import kotlinx.coroutines.launch
 
 /**
@@ -60,9 +61,25 @@ fun VoiceConfirmationScreen(
     var transactionType by remember { mutableStateOf(transaction.transactionType) }
     var paymentMethod by remember { mutableStateOf(transaction.paymentMethod) }
     var isExpense by remember { mutableStateOf(transaction.isExpense) }
+    var description by remember { mutableStateOf(transaction.originalText) }
     
-    // Edit section expanded state
-    var isEditExpanded by remember { mutableStateOf(false) }
+    // Detect if this party is a supplier (for purchase logic)
+    val isSupplier by viewModel.isSupplier(customerName).collectAsState(initial = false)
+    
+    // Sync description when name or amount changes
+    LaunchedEffect(customerName, amount, transactionType, isExpense) {
+        // Update description to reflect edited values
+        val amountVal = amount.toDoubleOrNull() ?: 0.0
+        description = when {
+            isExpense && transactionType == "EXPENSE" -> "$customerName - ₹$amount"
+            isExpense && transactionType == "PURCHASE" -> "Purchase from $customerName - ₹$amount"
+            transactionType == "DEBIT" -> "Received ₹$amount from $customerName"
+            else -> "Paid ₹$amount to $customerName"
+        }
+    }
+    
+    // Edit section expanded state - expanded by default for easy access
+    var isEditExpanded by remember { mutableStateOf(true) }
     
     // Customer suggestions from ViewModel
     val customerNames by viewModel.customerNames.collectAsState()
@@ -347,9 +364,11 @@ fun VoiceConfirmationScreen(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        // Party Name
+                        // Party/Category Label - changes based on transaction type
+                        val isExpenseCategory = isExpense && transactionType == "EXPENSE"
+                        
                         Text(
-                            text = "Party",
+                            text = if (isExpenseCategory) "Expense Category" else "Party",
                             style = MaterialTheme.typography.labelLarge,
                             color = TextSecondary
                         )
@@ -363,9 +382,13 @@ fun VoiceConfirmationScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .menuAnchor(),
-                                placeholder = { Text("Enter name") },
+                                placeholder = { Text(if (isExpenseCategory) "Select category" else "Enter name") },
                                 leadingIcon = {
-                                    Icon(Icons.Default.Person, null, tint = Purple600)
+                                    Icon(
+                                        if (isExpenseCategory) Icons.Default.Category else Icons.Default.Person, 
+                                        null, 
+                                        tint = if (isExpenseCategory) WarningOrange else Purple600
+                                    )
                                 },
                                 trailingIcon = {
                                     IconButton(onClick = { customerDropdownExpanded = !customerDropdownExpanded }) {
@@ -381,36 +404,55 @@ fun VoiceConfirmationScreen(
                             )
                             
                             ExposedDropdownMenu(
-                                expanded = customerDropdownExpanded && customerNames.isNotEmpty(),
+                                expanded = customerDropdownExpanded,
                                 onDismissRequest = { customerDropdownExpanded = false }
                             ) {
-                                // Show all names when dropdown opened, filter only when typing
-                                val filteredNames = if (customerName.isBlank() || customerName == transaction.customerName) {
-                                    customerNames.take(10) // Show all when not searching
-                                } else {
-                                    customerNames.filter { 
-                                        it.contains(customerName, ignoreCase = true) 
-                                    }.take(10)
-                                }
-                                
-                                if (filteredNames.isEmpty()) {
-                                    // Show create new option
-                                    DropdownMenuItem(
-                                        text = { Text("+ Create \"$customerName\"", color = SuccessGreen) },
-                                        onClick = { customerDropdownExpanded = false }
-                                    )
-                                } else {
-                                    filteredNames.forEach { name ->
+                                if (isExpenseCategory) {
+                                    // Show expense categories from AddExpenseScreen
+                                    expenseCategories.forEach { category ->
                                         DropdownMenuItem(
-                                            text = { Text(name) },
+                                            text = { Text(category.name) },
                                             onClick = {
-                                                customerName = name
+                                                customerName = category.name
                                                 customerDropdownExpanded = false
                                             },
                                             leadingIcon = {
-                                                Icon(Icons.Default.Person, null, tint = Purple600)
+                                                Icon(
+                                                    category.icon, 
+                                                    null, 
+                                                    tint = category.color
+                                                )
                                             }
                                         )
+                                    }
+                                } else {
+                                    // Show customer names for non-expense transactions
+                                    val filteredNames = if (customerName.isBlank() || customerName == transaction.customerName) {
+                                        customerNames.take(10)
+                                    } else {
+                                        customerNames.filter { 
+                                            it.contains(customerName, ignoreCase = true) 
+                                        }.take(10)
+                                    }
+                                    
+                                    if (filteredNames.isEmpty()) {
+                                        DropdownMenuItem(
+                                            text = { Text("+ Create \"$customerName\"", color = SuccessGreen) },
+                                            onClick = { customerDropdownExpanded = false }
+                                        )
+                                    } else {
+                                        filteredNames.forEach { name ->
+                                            DropdownMenuItem(
+                                                text = { Text(name) },
+                                                onClick = {
+                                                    customerName = name
+                                                    customerDropdownExpanded = false
+                                                },
+                                                leadingIcon = {
+                                                    Icon(Icons.Default.Person, null, tint = Purple600)
+                                                }
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -433,60 +475,88 @@ fun VoiceConfirmationScreen(
                             singleLine = true
                         )
                         
-                        // Type Selector
-                        Text(
-                            text = "Type",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = TextSecondary
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Row 1: Received & Expense
-                            TypeChip(
-                                label = "Received",
-                                selected = !isExpense && transactionType == "DEBIT",
-                                color = SuccessGreen,
-                                modifier = Modifier.weight(1f)
+                        // Type Selector - Only show for Customer/Supplier transactions, NOT for expenses
+                        // Detect if this is a customer/supplier transaction
+                        val isCustomerSupplier = customerName.isNotBlank() && !isExpense && transactionType != "EXPENSE"
+                        
+                        // Only show transaction type for customer/supplier transactions
+                        if (isCustomerSupplier) {
+                            Text(
+                                text = "Transaction Type",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = TextSecondary
+                            )
+                            
+                            // Show simplified You Got / You Gave buttons for customer/supplier
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                isExpense = false
-                                transactionType = "DEBIT"
-                            }
-                            TypeChip(
-                                label = "Expense",
-                                selected = isExpense && transactionType == "EXPENSE",
-                                color = WarningOrange,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                isExpense = true
-                                transactionType = "EXPENSE"
+                                // You Got (Money Received - DEBIT, or PURCHASE for suppliers)
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(56.dp)
+                                        .clickable {
+                                            if (isSupplier) {
+                                                // Supplier: You Got = Purchase (goods received)
+                                                transactionType = "PURCHASE"
+                                                isExpense = true
+                                            } else {
+                                                // Customer: You Got = Money received
+                                                transactionType = "DEBIT"
+                                                isExpense = false
+                                            }
+                                        },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (transactionType == "DEBIT" && !isExpense) SuccessGreen else BackgroundGray
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("⬇️", fontSize = 18.sp)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            "You Got",
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (transactionType == "DEBIT" && !isExpense) Color.White else TextPrimary,
+                                            fontSize = 15.sp
+                                        )
+                                    }
+                                }
+                                
+                                // You Gave (Money Paid - CREDIT)
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(56.dp)
+                                        .clickable {
+                                            transactionType = "CREDIT"
+                                            isExpense = false
+                                        },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (transactionType == "CREDIT" && !isExpense) DangerRed else BackgroundGray
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("⬆️", fontSize = 18.sp)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            "You Gave",
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (transactionType == "CREDIT" && !isExpense) Color.White else TextPrimary,
+                                            fontSize = 15.sp
+                                        )
+                                    }
+                                }
                             }
                         }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Row 2: Payment & Purchase
-                            TypeChip(
-                                label = "Payment",
-                                selected = !isExpense && transactionType == "CREDIT",
-                                color = DangerRed,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                isExpense = false
-                                transactionType = "CREDIT"
-                            }
-                            TypeChip(
-                                label = "Purchase",
-                                selected = isExpense && transactionType == "PURCHASE",
-                                color = PurchasePrimary,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                isExpense = true
-                                transactionType = "PURCHASE"
-                            }
-                        }
+                        // For expenses: No transaction type selector needed - expense is fixed
                         
                         // Cash/Bank Toggle
                         Text(

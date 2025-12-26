@@ -26,8 +26,9 @@ interface TradeTransactionDao {
 
     @Query("""
         SELECT
-            COALESCE(SUM(CASE WHEN type = 'BUY' THEN totalAmount ELSE 0 END), 0.0) as totalBuy,
-            COALESCE(SUM(CASE WHEN type = 'SELL' THEN totalAmount ELSE 0 END), 0.0) as totalSell
+            COALESCE(SUM(buyRate * quantity), 0.0) as totalBuy,
+            COALESCE(SUM(totalAmount), 0.0) as totalSell,
+            COALESCE(SUM(profit), 0.0) as totalProfit
         FROM trade_transactions
         WHERE date >= :startTime AND date < :endTime
     """)
@@ -35,8 +36,9 @@ interface TradeTransactionDao {
 
     @Query("""
         SELECT
-            COALESCE(SUM(CASE WHEN type = 'BUY' THEN totalAmount ELSE 0 END), 0.0) as totalBuy,
-            COALESCE(SUM(CASE WHEN type = 'SELL' THEN totalAmount ELSE 0 END), 0.0) as totalSell
+            COALESCE(SUM(buyRate * quantity), 0.0) as totalBuy,
+            COALESCE(SUM(totalAmount), 0.0) as totalSell,
+            COALESCE(SUM(profit), 0.0) as totalProfit
         FROM trade_transactions
     """)
     fun getOverallProfitSummary(): Flow<MonthlyProfitSummary>

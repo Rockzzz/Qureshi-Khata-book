@@ -1,6 +1,7 @@
 package com.example.tabelahisabapp.data.backup
 
 import android.content.Context
+import android.os.Environment
 import com.example.tabelahisabapp.data.db.AppDatabase
 import com.example.tabelahisabapp.data.db.entity.*
 import com.example.tabelahisabapp.data.preferences.BackupPreferences
@@ -22,17 +23,20 @@ import javax.inject.Singleton
  * - Transaction-level backups (individual transaction JSON)
  * - Quick snapshots on app close
  * - Backup cleanup and retention management
+ * 
+ * Backups are stored in: Downloads/Qureshi Khata Book/
  */
 @Singleton
 class BackupManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val database: AppDatabase,
-    private val backupPreferences: BackupPreferences
+    private val backupPreferences: BackupPreferences,
+    private val googleDriveManager: GoogleDriveBackupManager
 ) {
     private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
     
     companion object {
-        private const val BACKUP_DIR = "backups"
+        private const val APP_FOLDER_NAME = "Qureshi Khata Book"
         private const val DAILY_DIR = "daily"
         private const val TRANSACTIONS_DIR = "transactions"
         private const val SNAPSHOT_DIR = "snapshots"
@@ -46,8 +50,31 @@ class BackupManager @Inject constructor(
     
     // ============ DIRECTORY MANAGEMENT ============
     
+    /**
+     * Gets the backup folder path for external access (e.g., file explorer)
+     */
+    fun getBackupFolderPath(): String {
+        return getBackupRootDir().absolutePath
+    }
+    
+    /**
+     * Gets the backup root directory in app's external files
+     * Path: /storage/emulated/0/Android/data/com.example.tabelahisabapp/files/Qureshi Khata Book/
+     * 
+     * This location is:
+     * - Accessible via file managers (unlike internal storage)
+     * - No permissions required (unlike public Downloads)
+     * - Works on all Android versions
+     */
     private fun getBackupRootDir(): File {
-        val dir = File(context.filesDir, BACKUP_DIR)
+        // Use app's external files directory - accessible via file manager, no permissions needed
+        val externalFilesDir = context.getExternalFilesDir(null)
+        val dir = if (externalFilesDir != null) {
+            File(externalFilesDir, APP_FOLDER_NAME)
+        } else {
+            // Fallback to internal storage if external not available
+            File(context.filesDir, APP_FOLDER_NAME)
+        }
         if (!dir.exists()) dir.mkdirs()
         return dir
     }
@@ -97,6 +124,9 @@ class BackupManager @Inject constructor(
             
             // Cleanup old backups
             cleanupOldBackups()
+            
+            // Auto-sync to Google Drive if connected
+            autoSyncToDrive(backupFile)
             
             BackupResult(
                 success = true,
@@ -176,6 +206,9 @@ class BackupManager @Inject constructor(
             
             backupPreferences.setLastBackupTime(timestamp)
             
+            // Auto-sync to Google Drive if connected
+            autoSyncToDrive(backupFile)
+            
             BackupResult(
                 success = true,
                 filePath = backupFile.absolutePath,
@@ -223,6 +256,9 @@ class BackupManager @Inject constructor(
             backupPreferences.setLastSafeBackupPath(backupFile.absolutePath)
             backupPreferences.setAppClosedProperly(true)
             
+            // Auto-sync to Google Drive if connected
+            autoSyncToDrive(backupFile)
+            
             // Keep only last 3 snapshots
             cleanupSnapshots(keepCount = 3)
             
@@ -248,9 +284,15 @@ class BackupManager @Inject constructor(
     suspend fun getAvailableBackups(): List<BackupInfo> = withContext(Dispatchers.IO) {
         val allBackups = mutableListOf<BackupInfo>()
         
-        // Daily backups
-        getDailyBackupDir().listFiles()?.filter { it.extension == "json" }?.forEach { file ->
+        // Check if backup directory exists and is accessible
+        val rootDir = getBackupRootDir()
+        android.util.Log.d("BackupManager", "Looking for backups in: ${rootDir.absolutePath}")
+        android.util.Log.d("BackupManager", "Root dir exists: ${rootDir.exists()}, canRead: ${rootDir.canRead()}")
+        
+        // Scan root folder for backup files (for files saved directly there)
+        rootDir.listFiles()?.filter { it.isFile && it.extension == "json" }?.forEach { file ->
             try {
+                android.util.Log.d("BackupManager", "Found backup file in root: ${file.name}")
                 val backupData = gson.fromJson(file.readText(), FullBackupData::class.java)
                 allBackups.add(
                     BackupInfo(
@@ -267,13 +309,42 @@ class BackupManager @Inject constructor(
                     )
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("BackupManager", "Error reading backup file: ${file.name}", e)
             }
         }
         
-        // Snapshots
-        getSnapshotBackupDir().listFiles()?.filter { it.extension == "json" }?.forEach { file ->
+        // Daily backups from subdirectory
+        val dailyDir = getDailyBackupDir()
+        android.util.Log.d("BackupManager", "Daily dir: ${dailyDir.absolutePath}, exists: ${dailyDir.exists()}")
+        dailyDir.listFiles()?.filter { it.extension == "json" }?.forEach { file ->
             try {
+                android.util.Log.d("BackupManager", "Found daily backup: ${file.name}")
+                val backupData = gson.fromJson(file.readText(), FullBackupData::class.java)
+                allBackups.add(
+                    BackupInfo(
+                        id = file.nameWithoutExtension,
+                        fileName = file.name,
+                        filePath = file.absolutePath,
+                        timestamp = backupData.timestamp,
+                        sizeBytes = file.length(),
+                        type = BackupType.FULL_DAILY,
+                        customerCount = backupData.customers.size,
+                        transactionCount = backupData.customerTransactions.size + 
+                                          backupData.dailyLedgerTransactions.size +
+                                          backupData.tradeTransactions.size
+                    )
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("BackupManager", "Error reading daily backup: ${file.name}", e)
+            }
+        }
+        
+        // Snapshots from subdirectory
+        val snapshotDir = getSnapshotBackupDir()
+        android.util.Log.d("BackupManager", "Snapshot dir: ${snapshotDir.absolutePath}, exists: ${snapshotDir.exists()}")
+        snapshotDir.listFiles()?.filter { it.extension == "json" }?.forEach { file ->
+            try {
+                android.util.Log.d("BackupManager", "Found snapshot: ${file.name}")
                 val backupData = gson.fromJson(file.readText(), FullBackupData::class.java)
                 allBackups.add(
                     BackupInfo(
@@ -290,10 +361,11 @@ class BackupManager @Inject constructor(
                     )
                 )
             } catch (e: Exception) {
-                e.printStackTrace()
+                android.util.Log.e("BackupManager", "Error reading snapshot: ${file.name}", e)
             }
         }
         
+        android.util.Log.d("BackupManager", "Total backups found: ${allBackups.size}")
         allBackups.sortedByDescending { it.timestamp }
     }
     
@@ -395,6 +467,37 @@ class BackupManager @Inject constructor(
         backupData.farms.forEach { database.farmDao().insertFarm(it.toEntity()) }
     }
     
+    // ============ GOOGLE DRIVE AUTO-SYNC ============
+    
+    /**
+     * Auto-sync backup file to Google Drive if connected
+     * Runs in background, does not block on failure
+     */
+    private suspend fun autoSyncToDrive(backupFile: File) {
+        try {
+            // Only sync if Google Drive is connected
+            if (!googleDriveManager.isSignedIn()) {
+                return
+            }
+            
+            // Upload in background without blocking
+            val result = googleDriveManager.uploadBackup(backupFile)
+            
+            // Log success/failure for debugging
+            result.fold(
+                onSuccess = { 
+                    android.util.Log.d("BackupManager", "Auto-synced to Drive: ${backupFile.name}")
+                },
+                onFailure = { error ->
+                    android.util.Log.w("BackupManager", "Auto-sync failed: ${error.message}")
+                }
+            )
+        } catch (e: Exception) {
+            // Silently catch errors to prevent backup failures
+            android.util.Log.w("BackupManager", "Auto-sync error: ${e.message}")
+        }
+    }
+    
     // ============ CLEANUP ============
     
     private suspend fun cleanupOldBackups() {
@@ -470,21 +573,21 @@ class BackupManager @Inject constructor(
 // ============ EXTENSION FUNCTIONS FOR ENTITY CONVERSION ============
 
 // Entity to Backup
-fun Customer.toBackup() = CustomerBackup(id, name, phone, type, createdAt)
+fun Customer.toBackup() = CustomerBackup(id, name, phone, type, email, businessName, category, openingBalance, notes, createdAt)
 fun CustomerTransaction.toBackup() = CustomerTransactionBackup(id, customerId, type, amount, date, note, voiceNotePath, paymentMethod, createdAt)
 fun DailyBalance.toBackup() = DailyBalanceBackup(id, date, openingCash, openingBank, closingCash, closingBank, note, createdAt)
 fun DailyLedgerTransaction.toBackup() = DailyLedgerTransactionBackup(id, date, mode, amount, party, note, createdAt, customerTransactionId)
-fun DailyExpense.toBackup() = DailyExpenseBackup(id, date, category, amount, paymentMethod, createdAt)
-fun TradeTransaction.toBackup() = TradeTransactionBackup(id, farmId, entryNumber, date, deonar, type, itemName, quantity, buyRate, weight, rate, extraBonus, totalAmount, profit, pricePerUnit, note, createdAt)
+fun DailyExpense.toBackup() = DailyExpenseBackup(id, date, category, amount, paymentMethod, note, createdAt)
+fun TradeTransaction.toBackup() = TradeTransactionBackup(id, farmId, entryNumber, date, deonar, type, itemName, quantity, buyRate, weight, rate, extraBonus, netWeight, fee, tds, totalAmount, profit, pricePerUnit, note, createdAt)
 fun Company.toBackup() = CompanyBackup(id, name, code, address, phone, email, gstNumber, createdAt)
 fun Farm.toBackup() = FarmBackup(id, name, shortCode, nextNumber, createdAt)
 
 // Backup to Entity
-fun CustomerBackup.toEntity() = Customer(id, name, phone, type, createdAt)
+fun CustomerBackup.toEntity() = Customer(id, name, phone, type, email, businessName, category, openingBalance, notes, createdAt)
 fun CustomerTransactionBackup.toEntity() = CustomerTransaction(id, customerId, type, amount, date, note, voiceNotePath, paymentMethod, createdAt)
 fun DailyBalanceBackup.toEntity() = DailyBalance(id, date, openingCash, openingBank, closingCash, closingBank, note, createdAt)
 fun DailyLedgerTransactionBackup.toEntity() = DailyLedgerTransaction(id, date, mode, amount, party, note, createdAt, customerTransactionId)
-fun DailyExpenseBackup.toEntity() = DailyExpense(id, date, category, amount, paymentMethod, createdAt)
-fun TradeTransactionBackup.toEntity() = TradeTransaction(id, farmId, entryNumber, date, deonar, type, itemName, quantity, buyRate, weight, rate, extraBonus, totalAmount, profit, pricePerUnit, note, createdAt)
+fun DailyExpenseBackup.toEntity() = DailyExpense(id, date, category, amount, paymentMethod, note, createdAt)
+fun TradeTransactionBackup.toEntity() = TradeTransaction(id, farmId, entryNumber, date, deonar, type, itemName, quantity, buyRate, weight, rate, extraBonus, netWeight, fee, tds, totalAmount, profit, pricePerUnit, note, createdAt)
 fun CompanyBackup.toEntity() = Company(id, name, code, address, phone, email, gstNumber, createdAt)
 fun FarmBackup.toEntity() = Farm(id, name, shortCode, nextNumber, createdAt)

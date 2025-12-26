@@ -14,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshContainer
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,6 +28,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -39,6 +42,8 @@ import com.example.tabelahisabapp.ui.trading.TradingViewModel
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import com.example.tabelahisabapp.R
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -65,6 +70,7 @@ fun HomeDashboardScreen(
     dailyViewModel: DailySummaryViewModel = hiltViewModel(),
     tradingViewModel: TradingViewModel = hiltViewModel(),
     onNavigateToCustomers: (String?) -> Unit,
+    onNavigateToSuppliers: (String?) -> Unit,
     onNavigateToDaily: () -> Unit,
     onNavigateToTrading: () -> Unit,
     onNavigateToSettings: () -> Unit = {},
@@ -83,30 +89,48 @@ fun HomeDashboardScreen(
     var expanded by remember { mutableStateOf(false) }
 
     // Calculate financial metrics
-    val totalCustomers = customers.count { it.customer.type == "CUSTOMER" || it.customer.type == "BOTH" }
-    val totalSellers = customers.count { it.customer.type == "SELLER" || it.customer.type == "BOTH" }
-    
-    // Customers with outstanding (they owe us)
+    val totalCustomers =
+        customers.count { it.customer.type == "CUSTOMER" || it.customer.type == "BOTH" }
+    val totalSellers =
+        customers.count { it.customer.type == "SELLER" || it.customer.type == "BOTH" }
+
+    // Customer outstanding (they owe us) - positive balance means they owe us
     val customersWithOutstanding = customers
         .filter { (it.customer.type == "CUSTOMER" || it.customer.type == "BOTH") && it.balance > 0 }
     val totalOutstanding = customersWithOutstanding.sumOf { it.balance }
     val outstandingCustomerCount = customersWithOutstanding.size
-    
-    // Seller payment pending (we owe them) - negative balance means we owe seller
-    val sellersWithPending = customers
+
+    // Customer payments (we paid them) - negative customer balance
+    val customersWithPayments = customers
+        .filter { (it.customer.type == "CUSTOMER" || it.customer.type == "BOTH") && it.balance < 0 }
+    val customerPayments = customersWithPayments.sumOf { kotlin.math.abs(it.balance) }
+    val customerPaymentCount = customersWithPayments.size
+
+    // Supplier payment pending (we owe them) - negative balance means we owe supplier
+    val suppliersWithPending = customers
         .filter { (it.customer.type == "SELLER" || it.customer.type == "BOTH") && it.balance < 0 }
-    val sellerPaymentPending = sellersWithPending.sumOf { kotlin.math.abs(it.balance) }
-    val pendingSellerCount = sellersWithPending.size
+    val supplierPaymentPending = suppliersWithPending.sumOf { kotlin.math.abs(it.balance) }
+    val pendingSupplierCount = suppliersWithPending.size
+
+    // Supplier advance (they owe us) - positive supplier balance
+    val suppliersWithAdvance = customers
+        .filter { (it.customer.type == "SELLER" || it.customer.type == "BOTH") && it.balance > 0 }
+    val supplierAdvance = suppliersWithAdvance.sumOf { it.balance }
+    val supplierAdvanceCount = suppliersWithAdvance.size
 
     // Today's closing balances - LIVE calculation from ledger transactions
     val openingCash = todayBalance?.openingCash ?: 0.0
     val openingBank = todayBalance?.openingBank ?: 0.0
-    
+
     // Calculate live totals from ledger transactions
     val (liveCash, liveBank) = remember(todayLedgerTransactions, openingCash, openingBank) {
-        dailyViewModel.calculateBalancesFromTransactions(openingCash, openingBank, todayLedgerTransactions)
+        dailyViewModel.calculateBalancesFromTransactions(
+            openingCash,
+            openingBank,
+            todayLedgerTransactions
+        )
     }
-    
+
     val todayCash = liveCash
     val todayBank = liveBank
     val totalAvailable = todayCash + todayBank
@@ -140,22 +164,23 @@ fun HomeDashboardScreen(
     }
     val netProfit = totalIncome - totalExpenses
 
-    // Trading profits
-    val monthProfit = thisMonthProfit?.let { it.totalSell - it.totalBuy } ?: 0.0
-    val overallTradingProfit = overallProfit?.let { it.totalSell - it.totalBuy } ?: 0.0
+    // Trading profits - use totalProfit field which sums actual profit from trades
+    val monthProfit = thisMonthProfit?.totalProfit ?: 0.0
+    val overallTradingProfit = overallProfit?.totalProfit ?: 0.0
 
-    // Net Worth calculation for graph
-    // Net Worth = Cash + Bank + Customer Outstanding - Seller Payable
-    val netWorthDataPoints = remember(allDailyBalances, customers) {
+    // Net Worth calculation for graph (includes date and amount)
+    // Net Worth = Cash + Bank + Customer Outstanding - Supplier Payable
+    val netWorthWithDates = remember(allDailyBalances, customers) {
         allDailyBalances
             .sortedBy { it.date }
-            .takeLast(12) // Last 12 entries
+            .takeLast(7) // Last 7 days for better readability
             .map { balance ->
                 val cash = balance.closingCash
                 val bank = balance.closingBank
-                cash + bank + totalOutstanding - sellerPaymentPending
+                Pair(balance.date, cash + bank + totalOutstanding - supplierPaymentPending)
             }
     }
+    val netWorthDataPoints = netWorthWithDates.map { it.second }
 
     Scaffold(
         containerColor = Color(0xFFF1F5F9), // Slate-100 background
@@ -215,9 +240,9 @@ fun HomeDashboardScreen(
                                     contentScale = androidx.compose.ui.layout.ContentScale.Crop
                                 )
                             }
-                            
+
                             Spacer(modifier = Modifier.width(12.dp))
-                            
+
                             Column {
                                 Text(
                                     text = "Qureshi Khata Book",
@@ -226,7 +251,10 @@ fun HomeDashboardScreen(
                                     color = Color.White
                                 )
                                 Text(
-                                    text = SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.getDefault()).format(Date()),
+                                    text = SimpleDateFormat(
+                                        "EEEE, dd MMMM yyyy",
+                                        Locale.getDefault()
+                                    ).format(Date()),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color.White.copy(alpha = 0.8f)
                                 )
@@ -248,523 +276,563 @@ fun HomeDashboardScreen(
                 }
             }
 
-            // Scrollable content
-            Column(
+            // Pull-to-refresh state
+            val pullRefreshState = rememberPullToRefreshState()
+            val coroutineScope = rememberCoroutineScope()
+            var isRefreshing by remember { mutableStateOf(false) }
+
+            // Handle refresh trigger
+            if (pullRefreshState.isRefreshing) {
+                LaunchedEffect(true) {
+                    isRefreshing = true
+                    // Trigger refresh on all viewmodels
+                    customerViewModel.refresh()
+                    dailyViewModel.refresh()
+                    tradingViewModel.refresh()
+                    delay(1000) // Give time for data to load
+                    isRefreshing = false
+                    pullRefreshState.endRefresh()
+                }
+            }
+
+            // Scrollable content with pull-to-refresh
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 16.dp, bottom = 100.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .nestedScroll(pullRefreshState.nestedScrollConnection)
             ) {
-                // ═══════════════════════════════════════════════════════════
-                // SECTION 1: Today's Closing Position (Most Important)
-                // ═══════════════════════════════════════════════════════════
-                PremiumCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    gradient = Brush.linearGradient(
-                        colors = listOf(Color(0xFF1E293B), Color(0xFF334155))
-                    )
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 16.dp, bottom = 100.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Today's Closing Balance",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White.copy(alpha = 0.9f)
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    text = "LIVE",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = AccentGreen
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        // Cash | Bank | Total Row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // Cash in Hand
-                            Column(horizontalAlignment = Alignment.Start) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .background(Color(0xFF94A3B8), CircleShape)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Cash in Hand",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.7f)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = formatCurrency(todayCash),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                            }
-
-                            // Divider
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .height(50.dp)
-                                    .background(Color.White.copy(alpha = 0.2f))
-                            )
-
-                            // Bank Balance
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .background(AccentBlue, CircleShape)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Bank Balance",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.7f)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = formatCurrency(todayBank),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = AccentBlue
-                                )
-                            }
-
-                            // Divider
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .height(50.dp)
-                                    .background(Color.White.copy(alpha = 0.2f))
-                            )
-
-                            // Total Available
-                            Column(horizontalAlignment = Alignment.End) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .background(AccentGreen, CircleShape)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = "Total Available",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.7f)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = formatCurrency(totalAvailable),
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = AccentGreen
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // ═══════════════════════════════════════════════════════════
-                // SECTION 2: Money Given vs Money to Pay (Side by Side)
-                // ═══════════════════════════════════════════════════════════
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Customer Outstanding (Receivable) - GREEN
-                    MoneyFlowCard(
-                        modifier = Modifier.weight(1f),
-                        title = "Customer Outstanding",
-                        subtitle = "$outstandingCustomerCount customers",
-                        amount = totalOutstanding,
-                        icon = Icons.Outlined.CallReceived,
-                        backgroundColor = SoftGreen,
-                        accentColor = AccentGreen,
-                        iconBackgroundColor = Color(0xFF10B981).copy(alpha = 0.15f),
-                        onClick = { onNavigateToCustomers("CUSTOMER_WITH_BALANCE") }
-                    )
-
-                    // Seller Payment Pending (Payable) - RED/ORANGE
-                    MoneyFlowCard(
-                        modifier = Modifier.weight(1f),
-                        title = "Seller Pending",
-                        subtitle = "$pendingSellerCount sellers",
-                        amount = sellerPaymentPending,
-                        icon = Icons.Outlined.CallMade,
-                        backgroundColor = SoftRed,
-                        accentColor = AccentOrange,
-                        iconBackgroundColor = Color(0xFFF97316).copy(alpha = 0.15f),
-                        onClick = { onNavigateToCustomers("SELLER_WITH_BALANCE") }
-                    )
-                }
-
-                // ═══════════════════════════════════════════════════════════
-                // SECTION 3: Money Distribution
-                // ═══════════════════════════════════════════════════════════
-                PremiumWhiteCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Money Distribution",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary
-                            )
-                            Icon(
-                                Icons.Outlined.PieChart,
-                                contentDescription = null,
-                                tint = AccentPurple,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        val totalMoney = todayCash + todayBank + totalOutstanding
-                        val cashPercent = if (totalMoney > 0) (todayCash / totalMoney * 100) else 0.0
-                        val bankPercent = if (totalMoney > 0) (todayBank / totalMoney * 100) else 0.0
-                        val customerPercent = if (totalMoney > 0) (totalOutstanding / totalMoney * 100) else 0.0
-
-                        // Distribution Bars
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            DistributionItem(
-                                label = "Cash",
-                                amount = todayCash,
-                                percentage = cashPercent,
-                                color = Color(0xFF64748B)
-                            )
-                            DistributionItem(
-                                label = "Bank",
-                                amount = todayBank,
-                                percentage = bankPercent,
-                                color = AccentBlue
-                            )
-                            DistributionItem(
-                                label = "With Customers",
-                                amount = totalOutstanding,
-                                percentage = customerPercent,
-                                color = AccentGreen
-                            )
-                            DistributionItem(
-                                label = "Pending to Sellers",
-                                amount = -sellerPaymentPending,
-                                percentage = 0.0,
-                                color = AccentRed,
-                                isNegative = true
-                            )
-                        }
-                    }
-                }
-
-                // ═══════════════════════════════════════════════════════════
-                // SECTION 4: Business Growth Graph
-                // ═══════════════════════════════════════════════════════════
-                PremiumWhiteCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = "Net Worth Growth",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = TextPrimary
-                                )
-                                Text(
-                                    text = "Cash + Bank + Receivable - Payable",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
-                                )
-                            }
-
-                            // Trend indicator
-                            val currentNetWorth = todayCash + todayBank + totalOutstanding - sellerPaymentPending
-                            val trendUp = netWorthDataPoints.lastOrNull()?.let { it >= (netWorthDataPoints.getOrNull(netWorthDataPoints.size - 2) ?: 0.0) } ?: true
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .background(
-                                        if (trendUp) AccentGreen.copy(alpha = 0.1f) else AccentRed.copy(alpha = 0.1f),
-                                        RoundedCornerShape(8.dp)
-                                    )
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Icon(
-                                    if (trendUp) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
-                                    contentDescription = null,
-                                    tint = if (trendUp) AccentGreen else AccentRed,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = if (trendUp) "Growing" else "Declining",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (trendUp) AccentGreen else AccentRed
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        // Simple Line Chart
-                        if (netWorthDataPoints.isNotEmpty()) {
-                            NetWorthChart(
-                                dataPoints = netWorthDataPoints,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(120.dp)
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(120.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "No data yet",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextSecondary
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // ═══════════════════════════════════════════════════════════
-                // SECTION 5: Income vs Expense Summary
-                // ═══════════════════════════════════════════════════════════
-                PremiumWhiteCard(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Financial Summary",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = TextPrimary
-                            )
-
-                            // Filter Dropdown
-                            Box {
-                                OutlinedButton(
-                                    onClick = { expanded = true },
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        contentColor = TextSecondary
-                                    )
-                                ) {
-                                    Text(
-                                        text = selectedFilter,
-                                        style = MaterialTheme.typography.labelMedium
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(
-                                        Icons.Default.KeyboardArrowDown,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-
-                                DropdownMenu(
-                                    expanded = expanded,
-                                    onDismissRequest = { expanded = false }
-                                ) {
-                                    listOf("Today", "This Month", "All Time").forEach { filter ->
-                                        DropdownMenuItem(
-                                            text = { Text(filter) },
-                                            onClick = {
-                                                selectedFilter = filter
-                                                expanded = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(20.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            SummaryItem(
-                                label = "Total Income",
-                                amount = totalIncome,
-                                color = AccentGreen,
-                                icon = Icons.Outlined.ArrowDownward
-                            )
-                            SummaryItem(
-                                label = "Total Expense",
-                                amount = totalExpenses,
-                                color = AccentRed,
-                                icon = Icons.Outlined.ArrowUpward
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Net Profit Section
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    if (netProfit >= 0) SoftGreen else SoftRed,
-                                    RoundedCornerShape(12.dp)
-                                )
-                                .padding(16.dp)
-                        ) {
+                    // ═══════════════════════════════════════════════════════════
+                    // SECTION 1: Today's Closing Position (Most Important)
+                    // ═══════════════════════════════════════════════════════════
+                    PremiumCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        gradient = Brush.linearGradient(
+                            colors = listOf(Color(0xFF1E293B), Color(0xFF334155))
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(20.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Net Profit/Loss",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Medium,
-                                    color = if (netProfit >= 0) AccentGreen else AccentRed
+                                    text = "Today's Closing Balance",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White.copy(alpha = 0.9f)
                                 )
+                                Box(
+                                    modifier = Modifier
+                                        .background(
+                                            Color.White.copy(alpha = 0.15f),
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "LIVE",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AccentGreen
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(20.dp))
+
+                            // Cash | Bank | Total Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                // Cash in Hand
+                                Column(horizontalAlignment = Alignment.Start) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .background(Color(0xFF94A3B8), CircleShape)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Cash in Hand",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color.White.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = formatCurrency(todayCash),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+
+                                // Divider
+                                Box(
+                                    modifier = Modifier
+                                        .width(1.dp)
+                                        .height(50.dp)
+                                        .background(Color.White.copy(alpha = 0.2f))
+                                )
+
+                                // Bank Balance
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .background(AccentBlue, CircleShape)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Bank Balance",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color.White.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = formatCurrency(todayBank),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AccentBlue
+                                    )
+                                }
+
+                                // Divider
+                                Box(
+                                    modifier = Modifier
+                                        .width(1.dp)
+                                        .height(50.dp)
+                                        .background(Color.White.copy(alpha = 0.2f))
+                                )
+
+                                // Total Available
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .background(AccentGreen, CircleShape)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Total Available",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color.White.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = formatCurrency(totalAvailable),
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = AccentGreen
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // ═══════════════════════════════════════════════════════════
+                    // SECTION 2: Money Flow Cards (2x2 Grid)
+                    // ═══════════════════════════════════════════════════════════
+                    // Row 1: Customer cards
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Customer Outstanding (Receivable) - GREEN
+                        MoneyFlowCard(
+                            modifier = Modifier.weight(1f),
+                            title = "Customer Outstanding",
+                            subtitle = "$outstandingCustomerCount customers",
+                            amount = totalOutstanding,
+                            icon = Icons.Outlined.CallReceived,
+                            backgroundColor = SoftGreen,
+                            accentColor = AccentGreen,
+                            iconBackgroundColor = Color(0xFF10B981).copy(alpha = 0.15f),
+                            onClick = { onNavigateToCustomers("CUSTOMER_WITH_BALANCE") }
+                        )
+
+                        // Customer Payments (we paid them) - BLUE
+                        MoneyFlowCard(
+                            modifier = Modifier.weight(1f),
+                            title = "Customer Payments",
+                            subtitle = "$customerPaymentCount customers",
+                            amount = customerPayments,
+                            icon = Icons.Outlined.CallMade,
+                            backgroundColor = SoftBlue,
+                            accentColor = Color(0xFF3B82F6),
+                            iconBackgroundColor = Color(0xFF3B82F6).copy(alpha = 0.15f),
+                            onClick = { onNavigateToCustomers("CUSTOMER_PAYMENTS") }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Row 2: Supplier cards
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Supplier Payment Pending (Payable) - RED/ORANGE
+                        MoneyFlowCard(
+                            modifier = Modifier.weight(1f),
+                            title = "Supplier Pending",
+                            subtitle = "$pendingSupplierCount suppliers",
+                            amount = supplierPaymentPending,
+                            icon = Icons.Outlined.CallMade,
+                            backgroundColor = SoftRed,
+                            accentColor = AccentOrange,
+                            iconBackgroundColor = Color(0xFFF97316).copy(alpha = 0.15f),
+                            onClick = { onNavigateToSuppliers("SUPPLIER_WITH_BALANCE") }
+                        )
+
+                        // Supplier Advance (they owe us) - PURPLE
+                        MoneyFlowCard(
+                            modifier = Modifier.weight(1f),
+                            title = "Supplier Advance",
+                            subtitle = "$supplierAdvanceCount suppliers",
+                            amount = supplierAdvance,
+                            icon = Icons.Outlined.CallReceived,
+                            backgroundColor = SoftPurple,
+                            accentColor = Color(0xFF8B5CF6),
+                            iconBackgroundColor = Color(0xFF8B5CF6).copy(alpha = 0.15f),
+                            onClick = { onNavigateToSuppliers("SUPPLIER_ADVANCE") }
+                        )
+                    }
+
+                    // ═══════════════════════════════════════════════════════════
+                    // SECTION 3: Money Distribution
+                    // ═══════════════════════════════════════════════════════════
+                    PremiumWhiteCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(20.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Text(
-                                    text = formatCurrency(netProfit),
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (netProfit >= 0) AccentGreen else AccentRed
+                                    text = "Money Distribution",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = TextPrimary
+                                )
+                                Icon(
+                                    Icons.Outlined.PieChart,
+                                    contentDescription = null,
+                                    tint = AccentPurple,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Calculate today's expenses from ledger transactions
+                            val todayExpenses = remember(todayLedgerTransactions) {
+                                todayLedgerTransactions
+                                    .filter { it.sourceType == "expense" }
+                                    .sumOf { it.amount }
+                            }
+
+                            val totalMoney = todayCash + todayBank + totalOutstanding
+                            val cashPercent =
+                                if (totalMoney > 0) (todayCash / totalMoney * 100) else 0.0
+                            val bankPercent =
+                                if (totalMoney > 0) (todayBank / totalMoney * 100) else 0.0
+                            val customerPercent =
+                                if (totalMoney > 0) (totalOutstanding / totalMoney * 100) else 0.0
+
+                            // Distribution Bars
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                DistributionItem(
+                                    label = "Cash",
+                                    amount = todayCash,
+                                    percentage = cashPercent,
+                                    color = Color(0xFF64748B)
+                                )
+                                DistributionItem(
+                                    label = "Bank",
+                                    amount = todayBank,
+                                    percentage = bankPercent,
+                                    color = AccentBlue
+                                )
+                                DistributionItem(
+                                    label = "With Customers",
+                                    amount = totalOutstanding,
+                                    percentage = customerPercent,
+                                    color = AccentGreen
+                                )
+                                DistributionItem(
+                                    label = "Today's Expense",
+                                    amount = -todayExpenses,
+                                    percentage = 0.0,
+                                    color = Color(0xFFEF4444),
+                                    isNegative = true
+                                )
+                                DistributionItem(
+                                    label = "Pending to Suppliers",
+                                    amount = -supplierPaymentPending,
+                                    percentage = 0.0,
+                                    color = AccentRed,
+                                    isNegative = true
                                 )
                             }
                         }
                     }
-                }
 
-                // ═══════════════════════════════════════════════════════════
-                // SECTION 6: Trading & Profit Snapshot
-                // ═══════════════════════════════════════════════════════════
-                PremiumWhiteCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    onClick = onNavigateToTrading
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .background(SoftPurple, RoundedCornerShape(10.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.ShowChart,
-                                        contentDescription = null,
-                                        tint = AccentPurple,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
+                    // ═══════════════════════════════════════════════════════════
+                    // SECTION 4: Business Growth Graph
+                    // ═══════════════════════════════════════════════════════════
+                    PremiumWhiteCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(20.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Column {
                                     Text(
-                                        text = "Trading Performance",
+                                        text = "Net Worth Growth",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.SemiBold,
                                         color = TextPrimary
                                     )
                                     Text(
-                                        text = "Tap to view details",
+                                        text = "Cash + Bank + Receivable - Payable",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = TextSecondary
                                     )
                                 }
+
+                                // Trend indicator
+                                val currentNetWorth =
+                                    todayCash + todayBank + totalOutstanding - supplierPaymentPending
+                                val trendUp = netWorthDataPoints.lastOrNull()?.let {
+                                    it >= (netWorthDataPoints.getOrNull(netWorthDataPoints.size - 2)
+                                        ?: 0.0)
+                                } ?: true
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .background(
+                                            if (trendUp) AccentGreen.copy(alpha = 0.1f) else AccentRed.copy(
+                                                alpha = 0.1f
+                                            ),
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(
+                                        if (trendUp) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
+                                        contentDescription = null,
+                                        tint = if (trendUp) AccentGreen else AccentRed,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (trendUp) "Growing" else "Declining",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (trendUp) AccentGreen else AccentRed
+                                    )
+                                }
                             }
-                            Icon(
-                                Icons.Default.ChevronRight,
-                                contentDescription = null,
-                                tint = TextSecondary
-                            )
-                        }
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
 
-                        Divider(color = BorderGray.copy(alpha = 0.5f))
+                            // Day-wise Net Worth List (more informative than chart)
+                            if (netWorthWithDates.isNotEmpty()) {
+                                Column(
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    val dateFormat = SimpleDateFormat("dd MMM", Locale.getDefault())
+                                    netWorthWithDates.forEachIndexed { index, (date, amount) ->
+                                        val prevAmount =
+                                            if (index > 0) netWorthWithDates[index - 1].second else amount
+                                        val change = amount - prevAmount
+                                        val isUp = change >= 0
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(
+                                                    if (isUp) AccentGreen.copy(alpha = 0.05f) else AccentRed.copy(
+                                                        alpha = 0.05f
+                                                    ),
+                                                    RoundedCornerShape(8.dp)
+                                                )
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            // Date
+                                            Text(
+                                                text = dateFormat.format(Date(date)),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium,
+                                                color = TextPrimary
+                                            )
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text(
-                                    text = "This Month",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = formatCurrency(monthProfit),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (monthProfit >= 0) AccentGreen else AccentRed
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = "Overall",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = formatCurrency(overallTradingProfit),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (overallTradingProfit >= 0) AccentGreen else AccentRed
-                                )
+                                            // Amount and Change
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.End
+                                            ) {
+                                                Text(
+                                                    text = formatCurrency(amount),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = TextPrimary
+                                                )
+                                                if (index > 0) {
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(
+                                                        text = if (isUp) "+${formatCurrency(change)}" else formatCurrency(
+                                                            change
+                                                        ),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = if (isUp) AccentGreen else AccentRed
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(80.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "No data yet",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = TextSecondary
+                                    )
+                                }
                             }
                         }
                     }
+
+
+                    // ═══════════════════════════════════════════════════════════
+                    // SECTION 6: Trading & Profit Snapshot
+                    // ═══════════════════════════════════════════════════════════
+                    PremiumWhiteCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = onNavigateToTrading
+                    ) {
+                        Column(modifier = Modifier.padding(20.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .background(SoftPurple, RoundedCornerShape(10.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            Icons.Outlined.ShowChart,
+                                            contentDescription = null,
+                                            tint = AccentPurple,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            text = "Trading Performance",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = TextPrimary
+                                        )
+                                        Text(
+                                            text = "Tap to view details",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TextSecondary
+                                        )
+                                    }
+                                }
+                                Icon(
+                                    Icons.Default.ChevronRight,
+                                    contentDescription = null,
+                                    tint = TextSecondary
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(20.dp))
+
+                            Divider(color = BorderGray.copy(alpha = 0.5f))
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column {
+                                    Text(
+                                        text = "This Month",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextSecondary
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = formatCurrency(monthProfit),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (monthProfit >= 0) AccentGreen else AccentRed
+                                    )
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = "Overall",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TextSecondary
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = formatCurrency(overallTradingProfit),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (overallTradingProfit >= 0) AccentGreen else AccentRed
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Pull-to-refresh indicator - only visible when pulling or refreshing
+                if (pullRefreshState.isRefreshing || pullRefreshState.progress > 0) {
+                    PullToRefreshContainer(
+                        state = pullRefreshState,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 100.dp), // Push below the header
+                        containerColor = Color.White,
+                        contentColor = Color(0xFF667EEA)
+                    )
                 }
             }
         }
@@ -839,45 +907,50 @@ private fun MoneyFlowCard(
         colors = CardDefaults.cardColors(containerColor = backgroundColor)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(12.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
-                    .background(iconBackgroundColor, RoundedCornerShape(10.dp)),
+                    .size(32.dp)
+                    .background(iconBackgroundColor, RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     icon,
                     contentDescription = null,
                     tint = accentColor,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                color = TextPrimary
-            )
-
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary
-            )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = formatCurrency(amount),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = accentColor
+                text = title,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Medium,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
+
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall,
+            color = TextSecondary,
+            maxLines = 1
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = formatCurrency(amount),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = accentColor,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+        )
         }
     }
 }
@@ -927,7 +1000,9 @@ private fun DistributionItem(
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(fraction = (percentage / 100.0).coerceIn(0.0, 1.0).toFloat())
+                        .fillMaxWidth(
+                            fraction = (percentage / 100.0).coerceIn(0.0, 1.0).toFloat()
+                        )
                         .height(6.dp)
                         .background(color, RoundedCornerShape(3.dp))
                 )
@@ -1059,10 +1134,36 @@ private fun NetWorthChart(
 
 private fun formatCurrency(amount: Double): String {
     val absAmount = kotlin.math.abs(amount)
+    // Use Indian number format (lakhs, crores with commas: 1,79,870)
     val formatted = when {
-        absAmount >= 10000000 -> String.format("%.2f Cr", absAmount / 10000000)
-        absAmount >= 100000 -> String.format("%.2f L", absAmount / 100000)
-        else -> String.format("%.0f", absAmount)
+        absAmount >= 10000000 -> {
+            // Crores: show as full number with commas
+            val crores = absAmount.toLong()
+            formatIndianNumber(crores)
+        }
+        else -> formatIndianNumber(absAmount.toLong())
     }
     return if (amount < 0) "-₹$formatted" else "₹$formatted"
+}
+
+// Format number with Indian comma system (1,00,000 = 1 lakh)
+private fun formatIndianNumber(number: Long): String {
+    val numStr = number.toString()
+    if (numStr.length <= 3) return numStr
+
+    val result = StringBuilder()
+    val len = numStr.length
+    var count = 0
+
+    for (i in len - 1 downTo 0) {
+        result.insert(0, numStr[i])
+        count++
+        // First comma after 3 digits, then every 2 digits
+        if (i > 0) {
+            if (count == 3 || (count > 3 && (count - 3) % 2 == 0)) {
+                result.insert(0, ',')
+            }
+        }
+    }
+    return result.toString()
 }

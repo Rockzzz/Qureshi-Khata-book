@@ -3,126 +3,213 @@ package com.example.tabelahisabapp.ui.customer
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.tabelahisabapp.data.repository.MainRepository
 import com.example.tabelahisabapp.data.db.entity.CustomerTransaction
 import com.example.tabelahisabapp.data.db.entity.DailyLedgerTransaction
-import com.example.tabelahisabapp.data.repository.MainRepository
+import com.example.tabelahisabapp.data.db.entity.LedgerMode
+import com.example.tabelahisabapp.data.db.entity.SourceType
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class TransactionUiModel(
+    val id: Int,
+    val type: String,
+    val amount: Double,
+    val date: Long,
+    val note: String?,
+    val paymentMethod: String,
+    val createdAt: Long
+)
+
 @HiltViewModel
 class AddTransactionViewModel @Inject constructor(
     private val repository: MainRepository,
-    private val savedStateHandle: SavedStateHandle
+    savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
-    private val customerId: Int = checkNotNull(savedStateHandle["customerId"])
-    private val transactionId: Int? = savedStateHandle["transactionId"]
+    val transactionContext: String = savedStateHandle["transactionContext"] ?: "CUSTOMER"
+    val initialType: String = savedStateHandle["initialType"] ?: "DEBIT"
+    val transactionId: Int? = savedStateHandle.get<Int>("transactionId")
+    
+    // Try multiple ways to get the customer/supplier ID (could be Int or String in SavedStateHandle)
+    private val customerId: Int? = savedStateHandle.get<Int>("customerId") 
+        ?: savedStateHandle.get<String>("customerId")?.toIntOrNull()
+    
+    private val supplierId: Int? = savedStateHandle.get<Int>("supplierId")
+        ?: savedStateHandle.get<String>("supplierId")?.toIntOrNull()
 
-    suspend fun getTransaction(transactionId: Int): CustomerTransaction? {
-        return repository.getTransactionById(transactionId).first()
+    private val _saveSuccess = MutableStateFlow(false)
+    val saveSuccess: StateFlow<Boolean> = _saveSuccess.asStateFlow()
+    
+    init {
+        // Debug: Log the IDs to verify they're being retrieved
+        android.util.Log.d("AddTransactionViewModel", "Context: $transactionContext, CustomerId: $customerId, SupplierId: $supplierId")
+    }
+
+    suspend fun getTransactionUiModel(transId: Int): TransactionUiModel? {
+        val tx = repository.getTransactionById(transId).first()
+        return tx?.let {
+            val uiType = if (transactionContext == "SUPPLIER") {
+                when(it.type) {
+                    "PAYMENT" -> "CREDIT"
+                    "PURCHASE" -> "DEBIT"
+                    else -> it.type
+                }
+            } else {
+                it.type
+            }
+            TransactionUiModel(it.id, uiType, it.amount, it.date, it.note, it.paymentMethod ?: "CASH", it.createdAt)
+        }
     }
 
     fun saveTransaction(
-        type: String, 
-        amount: Double, 
-        date: Long, 
-        note: String?, 
-        paymentMethod: String = "CASH",
-        voiceNotePath: String?, 
-        originalCreatedAt: Long? = null
+        type: String, // UI Type: "CREDIT" (Red) or "DEBIT" (Green)
+        amount: Double,
+        date: Long,
+        note: String?,
+        paymentMethod: String,
+        voiceNotePath: String? = null,
+        transactionId: Int? = null
     ) {
-        if (amount <= 0) {
-            return
-        }
-
         viewModelScope.launch {
-            val customer = repository.getCustomerById(customerId).first() ?: return@launch
-            
-            // Normalize date to midnight
-            val normalizedDate = normalizeDateToMidnight(date)
-            
-            when (type) {
-                "PURCHASE" -> {
-                    // PURCHASE: Khareedari - "Sirf Record"
-                    // 1. Create seller's customer transaction as DEBIT (seller will receive money from us)
-                    val customerTransaction = CustomerTransaction(
-                        customerId = customerId,
-                        type = "DEBIT",  // DEBIT = seller will receive money = "Paisa Mila"
-                        amount = amount,
-                        date = normalizedDate,
-                        note = "🛒 Khareedari: ${note ?: customer.name}",
-                        paymentMethod = paymentMethod,
-                        voiceNotePath = voiceNotePath,
-                        createdAt = System.currentTimeMillis()
-                    )
-                    repository.insertOrUpdateTransaction(customerTransaction)
-                    
-                    // 2. Create Daily Ledger entry with special "PURCHASE" mode
-                    // This mode does NOT affect cash/bank calculations!
-                    val ledgerTransaction = DailyLedgerTransaction(
-                        date = normalizedDate,
-                        mode = "PURCHASE",  // Special mode - doesn't affect cash/bank
-                        amount = amount,
-                        party = customer.name,
-                        note = "🛒 Khareedari: ${note ?: customer.name}",
-                        createdAt = System.currentTimeMillis()
-                    )
-                    repository.insertOrUpdateLedgerTransaction(ledgerTransaction)
+            try {
+                val targetId = if (transactionContext == "SUPPLIER") supplierId else customerId
+                
+                if (targetId == null) {
+                    android.util.Log.e("AddTransactionViewModel", "ERROR: Target ID is null! Context: $transactionContext")
+                    _saveSuccess.value = false
+                    return@launch
                 }
                 
-                "EXPENSE" -> {
-                    // EXPENSE: Daily expense - save both customer transaction AND daily ledger entry
-                    // Customer transaction as CREDIT (we gave money/paid expense for this party)
-                    val customerTransaction = CustomerTransaction(
-                        customerId = customerId,
-                        type = "CREDIT",  // CREDIT = we paid = money went out
-                        amount = amount,
-                        date = normalizedDate,
-                        note = "💰 Kharcha: ${note ?: "Expense"}",
-                        paymentMethod = paymentMethod,
-                        voiceNotePath = voiceNotePath,
-                        createdAt = System.currentTimeMillis()
-                    )
-                    repository.insertOrUpdateTransaction(customerTransaction)
-                    
-                    // Daily ledger entry (not linked but will show in both places)
-                    val ledgerTransaction = DailyLedgerTransaction(
-                        date = normalizedDate,
-                        mode = if (paymentMethod == "CASH") "CASH_OUT" else "BANK_OUT",
-                        amount = amount,
-                        party = customer.name,
-                        note = "💰 Kharcha: ${note ?: "Expense"}",
-                        createdAt = System.currentTimeMillis()
-                    )
-                    repository.insertOrUpdateLedgerTransaction(ledgerTransaction)
-                }
+                val entity = repository.getCustomerById(targetId).first()
                 
-                else -> {
-                    // CREDIT (Udhaar Diya) or DEBIT (Paisa Mila) - normal flow
-                    repository.saveCustomerTransactionWithLedgerSync(
-                        customerId = customerId,
-                        customerName = customer.name,
-                        type = type,
-                        amount = amount,
-                        date = normalizedDate,
-                        note = note,
-                        paymentMethod = paymentMethod,
-                        voiceNotePath = voiceNotePath
-                    )
+                if (entity == null) {
+                    android.util.Log.e("AddTransactionViewModel", "ERROR: Entity not found for ID: $targetId")
+                    _saveSuccess.value = false
+                    return@launch
                 }
+
+            if (transactionId != null) {
+                // Update Logic
+                // Note: Updating Type might require complex Ledger Sync update.
+                // For simplified impl, we assume basic field updates, or re-insertion logic needed in Repo.
+                val existing = repository.getTransactionById(transactionId).first() ?: return@launch
+                
+                // Determine persistent type
+                val persistentType = if (transactionContext == "SUPPLIER") {
+                    when(type) {
+                        "CREDIT" -> "PAYMENT"
+                        "DEBIT" -> "PURCHASE"
+                        else -> type
+                    }
+                } else type
+
+                val updated = existing.copy(
+                    type = persistentType,
+                    amount = amount,
+                    date = date,
+                    note = note,
+                    paymentMethod = paymentMethod,
+                    voiceNotePath = voiceNotePath ?: existing.voiceNotePath
+                )
+                repository.insertOrUpdateTransaction(updated)
+                // TODO: Sync changes to Linked Ledger Transaction
+                
+            } else {
+                // Create New Logic
+                if (transactionContext == "SUPPLIER") {
+                   if (type == "DEBIT") { 
+                       // Supplier PURCHASE (Goods In) -> Use custom logic for correct Ledger Mode
+                       savePurchase(targetId, entity.name, amount, date, note, paymentMethod, voiceNotePath)
+                   } else {
+                       // Supplier PAYMENT (Money Out) -> Use Standard Logic with isSupplier = true
+                       repository.saveCustomerTransactionWithLedgerSync(
+                           customerId = targetId,
+                           customerName = entity.name,
+                           type = "CREDIT", // Maps to PAYMENT behavior in Ledger (CASH_OUT)
+                           amount = amount,
+                           date = date,
+                           note = note,
+                           paymentMethod = paymentMethod,
+                           voiceNotePath = voiceNotePath,
+                           isSupplier = true  // Mark as supplier so it appears under "Payment Diya" not "Rozana Kharcha"
+                       )
+                   }
+                } else {
+                    // CUSTOMER
+                    if (type == "PURCHASE") { // Legacy support if needed, but UI only shows CREDIT/DEBIT
+                        savePurchase(targetId, entity.name, amount, date, note, paymentMethod, voiceNotePath)
+                    } else {
+                        repository.saveCustomerTransactionWithLedgerSync(
+                            customerId = targetId,
+                            customerName = entity.name,
+                            type = type,
+                            amount = amount,
+                            date = date,
+                            note = note,
+                            paymentMethod = paymentMethod,
+                            voiceNotePath = voiceNotePath
+                        )
+                    }
+                }
+            }
+            _saveSuccess.value = true
+            } catch (e: Exception) {
+                android.util.Log.e("AddTransactionViewModel", "Error saving transaction", e)
+                _saveSuccess.value = false
             }
         }
     }
     
-    private fun normalizeDateToMidnight(timestamp: Long): Long {
-        val calendar = java.util.Calendar.getInstance()
-        calendar.timeInMillis = timestamp
-        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
-        calendar.set(java.util.Calendar.MINUTE, 0)
-        calendar.set(java.util.Calendar.SECOND, 0)
-        calendar.set(java.util.Calendar.MILLISECOND, 0)
-        return calendar.timeInMillis
+    private suspend fun savePurchase(
+        customerId: Int,
+        partyName: String,
+        amount: Double,
+        date: Long,
+        note: String?,
+        paymentMethod: String,
+        voiceNotePath: String?
+    ) {
+         val tx = CustomerTransaction(
+            customerId = customerId,
+            type = "PURCHASE", // Or "DEBIT" if we want unified types? Let's use "PURCHASE" for clarity in DB
+            amount = amount,
+            date = date,
+            note = note,
+            paymentMethod = paymentMethod,
+            voiceNotePath = voiceNotePath,
+            createdAt = System.currentTimeMillis()
+        )
+        val txId = repository.insertOrUpdateTransactionAndGetId(tx).toInt()
+        
+        // For supplier purchases: use PURCHASE mode (no cash impact, record only)
+        // For customer purchases (if any): use CASH_OUT/BANK_OUT
+        val isSupplierPurchase = transactionContext == "SUPPLIER"
+        
+        val ledgerMode = if (isSupplierPurchase) {
+            "PURCHASE" // Record only, no cash impact
+        } else {
+            if (paymentMethod == "CASH") LedgerMode.CASH_OUT else LedgerMode.BANK_OUT
+        }
+        
+        val sourceType = if (isSupplierPurchase) SourceType.SUPPLIER else SourceType.CUSTOMER
+        
+        val ledgerEntry = DailyLedgerTransaction(
+            date = date,
+            mode = ledgerMode,
+            amount = amount,
+            party = partyName,
+            note = note,
+            createdAt = System.currentTimeMillis(),
+            customerTransactionId = txId,
+            sourceType = sourceType,
+            sourceId = if (isSupplierPurchase) customerId else txId
+        )
+        repository.insertOrUpdateLedgerTransaction(ledgerEntry)
     }
 }

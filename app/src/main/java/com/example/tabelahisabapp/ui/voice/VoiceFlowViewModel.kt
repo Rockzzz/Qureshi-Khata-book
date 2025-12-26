@@ -64,6 +64,20 @@ class VoiceFlowViewModel @Inject constructor(
             }
         }
     }
+    
+    /**
+     * Check if a customer name belongs to a supplier
+     * Used to determine if "You Got" should create PURCHASE entry
+     */
+    fun isSupplier(customerName: String): Flow<Boolean> {
+        return customerDao.getAllCustomersWithBalance().map { customers ->
+            customers.find { 
+                it.customer.name.equals(customerName, ignoreCase = true)
+            }?.customer?.let { customer ->
+                customer.type == "SELLER" || customer.type == "BOTH"
+            } ?: false
+        }
+    }
 
     /**
      * Start voice recording

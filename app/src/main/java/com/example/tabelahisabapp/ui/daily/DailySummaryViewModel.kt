@@ -18,9 +18,63 @@ import javax.inject.Inject
 class DailySummaryViewModel @Inject constructor(
     private val repository: MainRepository
 ) : ViewModel() {
+    
+    init {
+        // Auto-initialize today's balance from yesterday's closing
+        viewModelScope.launch {
+            ensureTodayBalanceExists()
+        }
+    }
+    
+    /**
+     * Ensures today's balance record exists.
+     * Sets opening balance from yesterday's closing balance.
+     * This is the core carry-forward logic.
+     */
+    private suspend fun ensureTodayBalanceExists() {
+        val today = getTodayDateNormalized()
+        val existingBalance = repository.getBalanceByDateSync(today)
+        
+        if (existingBalance == null) {
+            // Get yesterday's closing balance
+            val yesterday = getYesterdayDateNormalized()
+            val yesterdayBalance = repository.getBalanceByDateSync(yesterday)
+            
+            val openingCash = yesterdayBalance?.closingCash ?: 0.0
+            val openingBank = yesterdayBalance?.closingBank ?: 0.0
+            
+            // Get today's transactions to calculate closing
+            val transactions = repository.getLedgerTransactionsForDateSync(today)
+            val (closingCash, closingBank) = calculateBalancesFromTransactions(
+                openingCash, openingBank, transactions
+            )
+            
+            // Create today's balance record
+            val todayBalance = DailyBalance(
+                date = today,
+                openingCash = openingCash,
+                openingBank = openingBank,
+                closingCash = closingCash,
+                closingBank = closingBank,
+                note = null,
+                createdAt = System.currentTimeMillis()
+            )
+            repository.insertOrUpdateDailyBalance(todayBalance)
+        }
+    }
 
     fun getTodayDateNormalized(): Long {
         val calendar = Calendar.getInstance()
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        return calendar.timeInMillis
+    }
+    
+    private fun getYesterdayDateNormalized(): Long {
+        val calendar = Calendar.getInstance()
+        calendar.add(Calendar.DAY_OF_MONTH, -1)
         calendar.set(Calendar.HOUR_OF_DAY, 0)
         calendar.set(Calendar.MINUTE, 0)
         calendar.set(Calendar.SECOND, 0)
@@ -57,6 +111,10 @@ class DailySummaryViewModel @Inject constructor(
     
     // Live ledger transactions for today (for real-time balance calculation on Home screen)
     val todayLedgerTransactions = repository.getLedgerTransactionsByDate(getTodayDateNormalized())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    
+    // All distinct dates that have ledger transactions (for showing day cards even without DailyBalance)
+    val allLedgerDates = repository.getAllLedgerDates()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun getBalanceByDate(date: Long) = repository.getDailyBalanceByDate(normalizeDateToMidnight(date))
@@ -145,6 +203,10 @@ class DailySummaryViewModel @Inject constructor(
                 transaction.copy(date = normalizedDate)
             )
         }
+        
+        // CRITICAL: Propagate closing balances to update next day's opening balance
+        // This ensures the carry-forward logic works correctly
+        repository.propagateBalancesForward(normalizedDate)
     }
     
     suspend fun saveOrUpdateLedgerTransaction(transaction: DailyLedgerTransaction) {
@@ -201,6 +263,9 @@ class DailySummaryViewModel @Inject constructor(
             createdAt = createdAt
         )
         repository.insertOrUpdateDailyBalance(dailyBalance)
+        
+        // Propagate closing balances to next day's opening
+        repository.propagateBalancesForward(normalizedDate)
     }
 
     fun deleteDailyBalance(dailyBalance: DailyBalance) {
@@ -222,5 +287,65 @@ class DailySummaryViewModel @Inject constructor(
             repository.insertOrUpdateCustomer(customer)
         }
     }
+    
+    /**
+     * Update opening balance for a specific date
+     * This will:
+     * 1. Create or update DailyBalance record for that date
+     * 2. Recalculate closing balance based on transactions
+     * 3. Propagate changes to all subsequent dates (carry-forward)
+     */
+    fun updateOpeningBalance(
+        date: Long,
+        openingCash: Double,
+        openingBank: Double
+    ) {
+        viewModelScope.launch {
+            val normalizedDate = normalizeDateToMidnight(date)
+            
+            // Get transactions for this date to calculate closing
+            val transactions = repository.getLedgerTransactionsForDateSync(normalizedDate)
+            val (closingCash, closingBank) = calculateBalancesFromTransactions(
+                openingCash, openingBank, transactions
+            )
+            
+            // Get existing balance or create new one
+            val existingBalance = repository.getBalanceByDateSync(normalizedDate)
+            val dailyBalance = DailyBalance(
+                id = existingBalance?.id ?: 0,
+                date = normalizedDate,
+                openingCash = openingCash,
+                openingBank = openingBank,
+                closingCash = closingCash,
+                closingBank = closingBank,
+                note = existingBalance?.note,
+                createdAt = existingBalance?.createdAt ?: System.currentTimeMillis()
+            )
+            
+            repository.insertOrUpdateDailyBalance(dailyBalance)
+            
+            // Propagate balances to all days after this date
+            repository.propagateBalancesForward(normalizedDate)
+        }
+    }
+    
+    /**
+     * Recalculate closing balance for a date based on transactions
+     * and propagate to subsequent dates
+     */
+    fun recalculateBalances(date: Long) {
+        viewModelScope.launch {
+            repository.propagateBalancesForward(normalizeDateToMidnight(date))
+        }
+    }
+    
+    /**
+     * Refresh function for pull-to-refresh
+     * Re-ensures today's balance exists and is current
+     */
+    fun refresh() {
+        viewModelScope.launch {
+            ensureTodayBalanceExists()
+        }
+    }
 }
-

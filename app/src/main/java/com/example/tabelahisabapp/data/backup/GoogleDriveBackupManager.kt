@@ -37,7 +37,7 @@ class GoogleDriveBackupManager @Inject constructor(
     private val backupPreferences: BackupPreferences
 ) {
     companion object {
-        private const val APP_FOLDER_NAME = "UdhaarLedger"
+        private const val APP_FOLDER_NAME = "Qureshi Khata Book"
         private const val DAILY_FOLDER_NAME = "Daily"
         private const val MIME_TYPE_JSON = "application/json"
         private const val MIME_TYPE_FOLDER = "application/vnd.google-apps.folder"
@@ -208,6 +208,13 @@ class GoogleDriveBackupManager @Inject constructor(
 
             folder.id
         } catch (e: Exception) {
+            // Detailed error logging
+            android.util.Log.e("GoogleDriveBackup", "Failed to create app folder", e)
+            android.util.Log.e("GoogleDriveBackup", "Error type: ${e.javaClass.simpleName}")
+            android.util.Log.e("GoogleDriveBackup", "Error message: ${e.message}")
+            e.cause?.let {
+                android.util.Log.e("GoogleDriveBackup", "Cause: ${it.message}")
+            }
             e.printStackTrace()
             null
         }

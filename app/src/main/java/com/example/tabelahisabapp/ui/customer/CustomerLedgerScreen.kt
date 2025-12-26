@@ -1,9 +1,13 @@
 package com.example.tabelahisabapp.ui.customer
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -11,10 +15,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.tabelahisabapp.data.db.entity.CustomerTransaction
 import com.example.tabelahisabapp.ui.components.*
@@ -24,30 +30,148 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CustomerLedgerScreen(
     viewModel: CustomerLedgerViewModel = hiltViewModel(),
     onBackPressed: () -> Unit,
-    onAddTransaction: (Int) -> Unit,
+    onAddTransaction: (Int, String) -> Unit, // Added type param
     onEditTransaction: (Int, Int) -> Unit,
     onVoiceClick: () -> Unit = {}
 ) {
     val customer by viewModel.customer.collectAsState()
     val transactions by viewModel.transactions.collectAsState()
-    val balanceSummary by viewModel.balanceSummary.collectAsState()
     var transactionToDelete by remember { mutableStateOf<CustomerTransaction?>(null) }
+    
+    // Calculate running balance
+    // 1. Sort transactions by date ascending to calculate
+    val sortedTransactions = transactions.sortedBy { it.date }
+    var runningBalance = 0.0
+    val transactionsWithBalance = sortedTransactions.map { tx ->
+        val amount = if (tx.type == "CREDIT") -tx.amount else tx.amount // Credit = Gave (-), Debit = Got (+)
+        runningBalance += amount
+        tx to runningBalance
+    }
+    // 2. Reverse back for display (newest on top)
+    val displayTransactions = transactionsWithBalance.sortedByDescending { it.first.date }
+    
+    // Group by Date
+    val groupedTransactions = displayTransactions.groupBy { 
+        SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(it.first.date))
+    }
 
     Scaffold(
         containerColor = BackgroundGray,
-        floatingActionButton = {
+        topBar = {
+            Surface(
+                color = Purple700,
+                contentColor = Color.White,
+                shadowElevation = 4.dp
+            ) {
+                Column {
+                   TopAppBar(
+                        title = {
+                             Row(verticalAlignment = Alignment.CenterVertically) {
+                                 customer?.let { cust ->
+                                     val (gradientStart, gradientEnd) = getAvatarGradient(cust.name)
+                                     GradientAvatar(
+                                         name = cust.name,
+                                         size = 40.dp,
+                                         gradientStart = gradientStart,
+                                         gradientEnd = gradientEnd
+                                     )
+                                     Spacer(modifier = Modifier.width(12.dp))
+                                     Column {
+                                         Text(
+                                             text = cust.name,
+                                             style = MaterialTheme.typography.titleMedium,
+                                             fontWeight = FontWeight.Bold
+                                         )
+                                         cust.phone?.let {
+                                             Text(
+                                                 text = it,
+                                                 style = MaterialTheme.typography.bodySmall,
+                                                 color = Color.White.copy(alpha = 0.8f)
+                                             )
+                                         }
+                                     }
+                                 }
+                             }
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = onBackPressed) {
+                                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            titleContentColor = Color.White,
+                            navigationIconContentColor = Color.White
+                        ),
+                        actions = {
+                             IconButton(onClick = { /* Report */ }) {
+                                 Icon(androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_sort_by_size), contentDescription = "Report")
+                             }
+                        }
+                    )
+                }
+            }
+        },
+        bottomBar = {
             customer?.let { cust ->
-                GradientFAB(
-                    onClick = { onAddTransaction(cust.id) },
-                    icon = Icons.Default.Add,
-                    contentDescription = "Add Transaction"
-                )
+                // Check if this is a supplier
+                val isSupplier = cust.type == "SELLER" || cust.type == "BOTH"
+                
+                Surface(
+                    shadowElevation = 16.dp,
+                    color = Color.White
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // YOU GAVE Button (Red) - CREDIT (Payment)
+                        Button(
+                            onClick = { onAddTransaction(cust.id, "CREDIT") },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = DangerRed)
+                        ) {
+                            Text(
+                                text = "YOU GAVE ₹",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
+                        
+                        // YOU GOT Button (Green) 
+                        // For SUPPLIER: PURCHASE (goods received)
+                        // For CUSTOMER: DEBIT (money received)
+                        Button(
+                            onClick = { 
+                                val txType = if (isSupplier) "PURCHASE" else "DEBIT"
+                                onAddTransaction(cust.id, txType) 
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen)
+                        ) {
+                            Text(
+                                text = "YOU GOT ₹",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
+                }
             }
         }
     ) { paddingValues ->
@@ -56,152 +180,117 @@ fun CustomerLedgerScreen(
                 .padding(paddingValues)
                 .fillMaxSize()
         ) {
-            // Gradient Header with Avatar
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(GradientPurpleStart, GradientPurpleEnd)
-                        )
-                    )
-                    .padding(horizontal = Spacing.screenPadding, vertical = Spacing.lg)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+            // Summary Header
+            customer?.let { cust ->
+                val balance = displayTransactions.firstOrNull()?.second ?: 0.0
+                
+                Surface(
+                    color = Color.White,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    IconButton(onClick = onBackPressed) {
-                        Icon(
-                            Icons.Default.ArrowBack,
-                            contentDescription = "Back",
-                            tint = CardBackground
-                        )
-                    }
-                    
-                    Spacer(modifier = Modifier.width(Spacing.xs))
-                    
-                    customer?.let { cust ->
-                        val (gradientStart, gradientEnd) = getAvatarGradient(cust.name)
-                        GradientAvatar(
-                            name = cust.name,
-                            size = 56.dp,
-                            gradientStart = gradientStart,
-                            gradientEnd = gradientEnd
-                        )
-                        
-                        Spacer(modifier = Modifier.width(Spacing.md))
-                        
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = cust.name,
-                                style = MaterialTheme.typography.headlineLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = CardBackground
-                            )
-                            cust.phone?.let {
-                                Text(
-                                    text = it,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = CardBackground.copy(alpha = 0.9f)
-                                )
-                            }
-                        }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                            .background(BackgroundGray, RoundedCornerShape(8.dp))
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                         Text(
+                             text = if (balance < 0) "You will get" else "You will give",
+                             color = TextSecondary,
+                             fontSize = 14.sp
+                         )
+                         Text(
+                             text = "₹${String.format("%.0f", abs(balance))}",
+                             color = if (balance < 0) DangerRed else SuccessGreen,
+                             fontSize = 24.sp,
+                             fontWeight = FontWeight.Bold
+                         )
                     }
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = Spacing.screenPadding)
-                    .padding(top = Spacing.md),
-                verticalArrangement = Arrangement.spacedBy(Spacing.cardSpacing)
+            // Headers for columns
+            Surface(
+                color = BackgroundGray,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                // Balance Summary Card
-                balanceSummary?.let { summary ->
-                    val balance = summary.totalCredit - summary.totalDebit
-                    
-                    WhiteCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        elevation = 8.dp
-                    ) {
-                        SectionHeader(text = "Outstanding Balance")
-                        
-                        Spacer(modifier = Modifier.height(Spacing.md))
-                        
-                        // Large Outstanding Amount
-                        DisplayAmount(
-                            amount = "₹${String.format("%.0f", balance)}",
-                            color = if (balance >= 0) DangerRed else SuccessGreen
-                        )
-                        
-                        Divider(
-                            modifier = Modifier.padding(vertical = Spacing.md),
-                            color = BorderGray
-                        )
-                        
-                        // Summary Row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                LabelText(text = "Total Udhaar Diya")
-                                Text(
-                                    text = "₹${String.format("%.0f", summary.totalCredit)}",
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = DangerRed
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                LabelText(text = "Total Paisa Mila")
-                                Text(
-                                    text = "₹${String.format("%.0f", summary.totalDebit)}",
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = SuccessGreen
-                                )
-                            }
-                        }
-                    }
-                }
-                
-                // Transaction History Header
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                   modifier = Modifier
+                       .fillMaxWidth()
+                       .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    SectionHeader(text = "Transaction History")
-                    customer?.let { cust ->
-                        TextButton(onClick = { onAddTransaction(cust.id) }) {
-                            Icon(Icons.Default.Add, contentDescription = null)
-                            Spacer(modifier = Modifier.width(Spacing.xxs))
-                            Text("Add")
+                    Text(
+                        text = "ENTRIES",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = "YOU GAVE",
+                        modifier = Modifier.weight(0.8f),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextSecondary,
+                        textAlign = TextAlign.End
+                    )
+                     Text(
+                        text = "YOU GOT",
+                        modifier = Modifier.weight(0.8f),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = TextSecondary,
+                        textAlign = TextAlign.End
+                    )
+                }
+            }
+
+            // Transaction List
+            val context = LocalContext.current
+            val voiceNotePlayer = remember { VoiceNotePlayer(context) }
+            
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                groupedTransactions.forEach { (date, txs) ->
+                    // Date Header
+                    item {
+                        Surface(
+                            color = BackgroundGray,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                             Box(
+                                 modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                 contentAlignment = Alignment.Center
+                             ) {
+                                 Surface(
+                                     shape = RoundedCornerShape(12.dp),
+                                     color = Color.White,
+                                     border = androidx.compose.foundation.BorderStroke(1.dp, BorderGray)
+                                 ) {
+                                     Text(
+                                         text = date,
+                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                         style = MaterialTheme.typography.bodySmall,
+                                         color = TextSecondary
+                                     )
+                                 }
+                             }
                         }
                     }
-                }
-                
-                // Transactions List
-                val context = LocalContext.current
-                val voiceNotePlayer = remember { VoiceNotePlayer(context) }
-                
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(Spacing.cardSpacing),
-                    contentPadding = PaddingValues(bottom = 80.dp)
-                ) {
-                    items(transactions) { transaction ->
-                        ModernTransactionCard(
-                            transaction = transaction,
+                    
+                    items(txs) { (tx, balance) ->
+                        KhataTransactionRow(
+                            transaction = tx,
+                            runningBalance = balance,
                             voiceNotePlayer = voiceNotePlayer,
-                            onEdit = {
-                                customer?.let { cust ->
-                                    onEditTransaction(cust.id, transaction.id)
-                                }
+                            onEdit = { 
+                                customer?.let { cust -> 
+                                    onEditTransaction(cust.id, tx.id) 
+                                } 
                             },
-                            onDelete = { transactionToDelete = transaction }
+                             // Long press handling could be added here
+                             onDelete = { transactionToDelete = tx }
                         )
                     }
                 }
@@ -236,151 +325,206 @@ fun CustomerLedgerScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun ModernTransactionCard(
+fun KhataTransactionRow(
     transaction: CustomerTransaction,
+    runningBalance: Double,
     voiceNotePlayer: VoiceNotePlayer,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
     var isPlaying by remember { mutableStateOf(false) }
-    val formattedDate = SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault()).format(Date(transaction.date))
+    var showMenu by remember { mutableStateOf(false) }
     val hasVoiceNote = transaction.voiceNotePath?.let { File(it).exists() } ?: false
     
-    WhiteCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Top
-        ) {
-            // Left Border Accent (Red for debit, Green for credit)
-            Box(
-                modifier = Modifier
-                    .width(4.dp)
-                    .height(80.dp)
-                    .background(
-                        color = if (transaction.type == "CREDIT") DangerRed else SuccessGreen,
-                        shape = RoundedCornerShape(Spacing.radiusSmall)
-                    )
-            )
-            
-            Spacer(modifier = Modifier.width(Spacing.md))
-            
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = if (transaction.type == "CREDIT") "Udhaar Diya" else "Paisa Mila",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = if (transaction.type == "CREDIT") DangerRed else SuccessGreen
-                    )
-                    
-                    // Voice indicator badge if voice note exists
-                    if (hasVoiceNote) {
-                        Spacer(modifier = Modifier.width(Spacing.xs))
+    // Determine if Cash or Bank
+    val isCash = transaction.paymentMethod == "CASH"
+    
+    // Background color: White usually
+    Surface(
+        color = Color.White,
+        modifier = Modifier
+             .fillMaxWidth()
+             .combinedClickable(
+                 onClick = {}, // No action on regular click
+                 onLongClick = { showMenu = true } // Show menu on long press
+             )
+             .padding(horizontal = 16.dp, vertical = 8.dp),
+         shape = RoundedCornerShape(8.dp),
+         shadowElevation = 1.dp
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top
+            ) {
+                // Date/Time, Payment Method & Note
+                Column(modifier = Modifier.weight(1f)) {
+                    // Date + Payment Method Row
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(transaction.date)),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        // Cash/Bank Badge
                         Surface(
-                            shape = RoundedCornerShape(Spacing.radiusSmall),
-                            color = InfoBlue.copy(alpha = 0.1f)
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (isCash) Color(0xFFE8F5E9) else Color(0xFFE3F2FD)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = Spacing.xs, vertical = 2.dp),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    Icons.Default.Mic,
-                                    contentDescription = "Voice Entry",
-                                    tint = InfoBlue,
-                                    modifier = Modifier.size(12.dp)
+                                    if (isCash) Icons.Default.Money else Icons.Default.AccountBalance,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(12.dp),
+                                    tint = if (isCash) SuccessGreen else InfoBlue
                                 )
-                                Spacer(modifier = Modifier.width(2.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "Voice",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = InfoBlue
+                                    text = if (isCash) "Cash" else "Bank",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    color = if (isCash) SuccessGreen else InfoBlue
                                 )
                             }
                         }
                     }
-                    
-                    // Payment mode label (Cash/Bank)
-                    Spacer(modifier = Modifier.width(Spacing.xs))
-                    Text(
-                        text = if (transaction.paymentMethod == "BANK") "Bank" else "Cash",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
+                     if (transaction.note?.isNotBlank() == true) {
+                         Text(
+                             text = transaction.note,
+                             style = MaterialTheme.typography.bodyMedium,
+                             fontWeight = FontWeight.Medium,
+                             maxLines = 2
+                         )
+                     }
+                      if (hasVoiceNote) {
+                          Icon(
+                              Icons.Default.Mic, 
+                              contentDescription = "Voice",
+                              tint = InfoBlue,
+                              modifier = Modifier.size(16.dp).padding(top = 4.dp)
+                          )
+                      }
                 }
                 
-                Text(
-                    text = formattedDate,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
-                
-                transaction.note?.let {
-                    if (it.isNotBlank()) {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary,
-                            maxLines = 2
-                        )
-                    }
+                // Amounts
+                // Gave (Credit)
+                if (transaction.type == "CREDIT") {
+                    Text(
+                         text = "₹${String.format("%.0f", transaction.amount)}",
+                         modifier = Modifier.weight(0.8f),
+                         textAlign = TextAlign.End,
+                         color = DangerRed,
+                         fontWeight = FontWeight.Bold,
+                         fontSize = 16.sp
+                    )
+                     Spacer(modifier = Modifier.weight(0.8f)) // Empty Debit side
+                } else {
+                    Spacer(modifier = Modifier.weight(0.8f)) // Empty Credit side
+                    Text(
+                         text = "₹${String.format("%.0f", transaction.amount)}",
+                         modifier = Modifier.weight(0.8f),
+                         textAlign = TextAlign.End,
+                         color = SuccessGreen,
+                         fontWeight = FontWeight.Bold,
+                         fontSize = 16.sp
+                    )
                 }
             }
             
-            // Amount
-            Text(
-                text = "₹${String.format("%.0f", transaction.amount)}",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = if (transaction.type == "CREDIT") DangerRed else SuccessGreen
-            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Divider(color = BorderGray.copy(alpha = 0.5f))
+            Spacer(modifier = Modifier.height(4.dp))
             
-            // Actions
-            Column {
-                // Voice playback button if exists
-                transaction.voiceNotePath?.let { path ->
-                    val file = File(path)
-                    if (file.exists()) {
-                        IconButton(
-                            onClick = {
-                                if (isPlaying) {
-                                    voiceNotePlayer.stop()
-                                    isPlaying = false
-                                } else {
-                                    voiceNotePlayer.play(file) {
-                                        isPlaying = false
-                                    }
-                                    isPlaying = true
-                                }
-                            },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                if (isPlaying) Icons.Default.PlayArrow else Icons.Default.VolumeUp,
-                                contentDescription = "Play Voice",
-                                tint = InfoBlue,
-                                modifier = Modifier.size(18.dp)
-                            )
+            // Running Balance
+            Row(
+                 modifier = Modifier.fillMaxWidth(),
+                 horizontalArrangement = Arrangement.End
+            ) {
+                 Text(
+                     text = "Balance: ",
+                     style = MaterialTheme.typography.bodySmall,
+                     color = TextSecondary
+                 )
+                 Text(
+                     text = "₹${String.format("%.0f", abs(runningBalance))}",
+                     style = MaterialTheme.typography.bodySmall,
+                     fontWeight = FontWeight.Bold,
+                     color = TextPrimary
+                 )
+                 Text(
+                     text = if (runningBalance < 0) " (Due)" else " (Adv)",
+                     style = MaterialTheme.typography.bodySmall,
+                     color = if (runningBalance < 0) DangerRed else SuccessGreen
+                 )
+            }
+        }
+    }
+    
+    // Bottom Sheet Menu
+    if (showMenu) {
+        ModalBottomSheet(
+            onDismissRequest = { showMenu = false },
+            containerColor = Color.White
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp)
+            ) {
+                // Edit Option
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showMenu = false
+                            onEdit()
                         }
-                    }
-                }
-                
-                IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
                         Icons.Default.Edit,
                         contentDescription = "Edit",
-                        tint = InfoBlue,
-                        modifier = Modifier.size(18.dp)
+                        tint = InfoBlue
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Text(
+                        "✏️ Edit Transaction",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
                     )
                 }
-                IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                
+                Divider()
+                
+                // Delete Option
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showMenu = false
+                            onDelete()
+                        }
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
                         Icons.Default.Delete,
                         contentDescription = "Delete",
-                        tint = DangerRed,
-                        modifier = Modifier.size(18.dp)
+                        tint = DangerRed
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Text(
+                        "🗑️ Delete Transaction",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = DangerRed
                     )
                 }
             }

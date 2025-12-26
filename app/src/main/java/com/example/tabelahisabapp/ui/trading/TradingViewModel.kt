@@ -88,6 +88,9 @@ class TradingViewModel @Inject constructor(
         weight: Double? = null,
         rate: Double? = null,
         extraBonus: Double? = null,
+        netWeight: Double? = null,
+        fee: Double? = null,
+        tds: Double? = null,
         totalAmount: Double,
         profit: Double? = null,
         pricePerUnit: Double,
@@ -114,6 +117,9 @@ class TradingViewModel @Inject constructor(
                 weight = weight,
                 rate = rate,
                 extraBonus = extraBonus,
+                netWeight = netWeight,
+                fee = fee,
+                tds = tds,
                 totalAmount = totalAmount,
                 profit = profit,
                 pricePerUnit = pricePerUnit,
@@ -133,6 +139,16 @@ class TradingViewModel @Inject constructor(
     fun getUniqueItemNames(): List<String> {
         return allTrades.value.map { it.itemName }.distinct().sorted()
     }
+    
+    /**
+     * Refresh function for pull-to-refresh
+     * Room StateFlows auto-update when data changes
+     */
+    fun refresh() {
+        viewModelScope.launch {
+            // Room StateFlows auto-update when data changes
+            // This just forces a recomposition
+        }
+    }
 }
-
 

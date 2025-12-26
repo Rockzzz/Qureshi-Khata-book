@@ -1,13 +1,19 @@
 package com.example.tabelahisabapp.ui.trading
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.*
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -15,19 +21,54 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.tabelahisabapp.data.db.entity.TradeTransaction
 import com.example.tabelahisabapp.data.db.entity.Farm
-import com.example.tabelahisabapp.ui.components.*
 import com.example.tabelahisabapp.ui.theme.*
-import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.math.abs
 
-@OptIn(ExperimentalMaterial3Api::class)
+// ═══════════════════════════════════════════════════════════════════════════
+// ANTIGRAVITY UI - TRADING SCREEN (Gemini-Inspired Design)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Color System
+private val GradientPurple1 = Color(0xFF6366F1)
+private val GradientPurple2 = Color(0xFF8B5CF6)
+private val ProfitGreen = Color(0xFF10B981)
+private val LossRed = Color(0xFFEF4444)
+private val CardWhite = Color.White
+private val TextDark = Color(0xFF1E293B)
+private val TextMuted = Color(0xFF64748B)
+private val BgGray = Color(0xFFF8FAFC)
+
+// Farm icon colors
+private val FarmColors = listOf(
+    Color(0xFF10B981), // Green
+    Color(0xFF6366F1), // Indigo
+    Color(0xFFF59E0B), // Amber
+    Color(0xFF06B6D4), // Cyan
+    Color(0xFFEC4899), // Pink
+    Color(0xFF8B5CF6), // Purple
+)
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TradingHomeScreen(
     viewModel: TradingViewModel = hiltViewModel(),
@@ -37,38 +78,19 @@ fun TradingHomeScreen(
     onFarmClick: (Int) -> Unit = {}
 ) {
     val allTrades by viewModel.allTrades.collectAsState()
-    val thisMonthProfit by viewModel.thisMonthProfit.collectAsState()
-    val overallProfit by viewModel.overallProfit.collectAsState()
+    val farms by viewModel.allFarms.collectAsState()
+    val hapticFeedback = LocalHapticFeedback.current
     
-    var selectedItem by remember { mutableStateOf<String?>(null) }
-    var tradeToDelete by remember { mutableStateOf<TradeTransaction?>(null) }
+    // Dialog states
     var showAddFarmDialog by remember { mutableStateOf(false) }
-    
-    // Farm edit/delete state
-    var farmToDelete by remember { mutableStateOf<Farm?>(null) }
     var showEditFarmDialog by remember { mutableStateOf(false) }
     var editingFarm by remember { mutableStateOf<Farm?>(null) }
     var editFarmName by remember { mutableStateOf("") }
-    var editFarmShortCode by remember { mutableStateOf("") }
-
-    val filteredTrades = remember(allTrades, selectedItem) {
-        if (selectedItem != null) {
-            allTrades.filter { it.itemName.equals(selectedItem, ignoreCase = true) }
-        } else {
-            allTrades
-        }
-    }
-
-    val uniqueItems = remember(allTrades) {
-        allTrades.map { it.itemName }.distinct().sorted()
-    }
+    var farmToDelete by remember { mutableStateOf<Farm?>(null) }
+    var selectedFarm by remember { mutableStateOf<Farm?>(null) }
+    var showContextMenu by remember { mutableStateOf(false) }
     
-    // Calculate total profit from all trades (using actual profit field)
-    val totalProfitFromTrades = remember(allTrades) {
-        allTrades.sumOf { it.profit ?: 0.0 }
-    }
-    
-    // Calculate this month's profit  
+    // Calculate profits
     val calendar = Calendar.getInstance()
     calendar.set(Calendar.DAY_OF_MONTH, 1)
     calendar.set(Calendar.HOUR_OF_DAY, 0)
@@ -77,11 +99,6 @@ fun TradingHomeScreen(
     calendar.set(Calendar.MILLISECOND, 0)
     val thisMonthStart = calendar.timeInMillis
     
-    val thisMonthProfitFromTrades = remember(allTrades) {
-        allTrades.filter { it.date >= thisMonthStart }.sumOf { it.profit ?: 0.0 }
-    }
-    
-    // Calculate last month's profit for percentage change
     val lastMonthCalendar = Calendar.getInstance()
     lastMonthCalendar.add(Calendar.MONTH, -1)
     lastMonthCalendar.set(Calendar.DAY_OF_MONTH, 1)
@@ -91,134 +108,170 @@ fun TradingHomeScreen(
     lastMonthCalendar.set(Calendar.MILLISECOND, 0)
     val lastMonthStart = lastMonthCalendar.timeInMillis
     
-    val lastMonthProfitFromTrades = remember(allTrades) {
-        allTrades.filter { it.date >= lastMonthStart && it.date < thisMonthStart }.sumOf { it.profit ?: 0.0 }
+    val thisMonthProfit = remember(allTrades) {
+        allTrades.filter { it.farmId != null && it.date >= thisMonthStart }.sumOf { it.profit ?: 0.0 }
     }
     
-    // Calculate percentage change
-    val percentageChange = remember(thisMonthProfitFromTrades, lastMonthProfitFromTrades) {
-        if (lastMonthProfitFromTrades != 0.0) {
-            ((thisMonthProfitFromTrades - lastMonthProfitFromTrades) / kotlin.math.abs(lastMonthProfitFromTrades) * 100).toInt()
-        } else if (thisMonthProfitFromTrades > 0) {
-            100 // If last month was 0 and this month is positive, show 100%
-        } else {
-            0
-        }
+    val lastMonthProfit = remember(allTrades) {
+        allTrades.filter { it.farmId != null && it.date >= lastMonthStart && it.date < thisMonthStart }.sumOf { it.profit ?: 0.0 }
+    }
+    
+    val totalProfit = remember(allTrades) {
+        allTrades.filter { it.farmId != null }.sumOf { it.profit ?: 0.0 }
+    }
+    
+    val percentageChange = remember(thisMonthProfit, lastMonthProfit) {
+        if (lastMonthProfit != 0.0) {
+            ((thisMonthProfit - lastMonthProfit) / abs(lastMonthProfit) * 100).toInt()
+        } else if (thisMonthProfit > 0) 100 else 0
     }
 
-    Scaffold(
-        containerColor = BackgroundGray,
-        floatingActionButton = {
-            GradientFAB(
-                onClick = { showAddFarmDialog = true },
-                icon = Icons.Default.Add,
-                contentDescription = "Add Farm"
-            )
-        }
-    ) { paddingValues ->
-        Column(
+    var isLoaded by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { isLoaded = true }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Extended Gradient Background
+        Box(
             modifier = Modifier
-                .padding(paddingValues)
-                .fillMaxSize()
-        ) {
-            // Gradient Header with Settings
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        brush = Brush.linearGradient(
-                            colors = listOf(GradientPurpleStart, GradientPurpleEnd)
-                        )
+                .fillMaxWidth()
+                .height(320.dp)
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(GradientPurple1, GradientPurple2)
                     )
-                    .padding(horizontal = Spacing.screenPadding, vertical = Spacing.lg)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                )
+        )
+        
+        // Content
+        Scaffold(
+            containerColor = Color.Transparent,
+            floatingActionButton = {
+                AnimatedVisibility(
+                    visible = isLoaded,
+                    enter = fadeIn(animationSpec = tween(300, delayMillis = 400)) + 
+                            slideInVertically(initialOffsetY = { 50 })
                 ) {
-                    Text(
-                        text = "Trading",
-                        style = MaterialTheme.typography.headlineLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = CardBackground
-                    )
-                    IconButton(onClick = onNavigateToSettings) {
-                        Icon(
-                            Icons.Default.Settings,
-                            contentDescription = "Settings",
-                            tint = CardBackground
-                        )
+                    FloatingActionButton(
+                        onClick = { showAddFarmDialog = true },
+                        containerColor = GradientPurple1,
+                        contentColor = Color.White,
+                        shape = CircleShape,
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add Farm")
                     }
                 }
             }
-
-            // Farm data - collect early so LazyColumn can use it
-            val farms by viewModel.allFarms.collectAsState()
-            
+        ) { paddingValues ->
             LazyColumn(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = Spacing.screenPadding),
-                contentPadding = PaddingValues(top = Spacing.md, bottom = 80.dp),
-                verticalArrangement = Arrangement.spacedBy(Spacing.md)
+                    .padding(paddingValues)
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 100.dp)
             ) {
-                // Profit Summary Cards (Stacked - This Month Primary)
+                // ═══════════════════════════════════════════════════════════
+                // HEADER + HERO CARD
+                // ═══════════════════════════════════════════════════════════
                 item {
                     Column(
-                        verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+                        modifier = Modifier.padding(horizontal = 20.dp)
                     ) {
-                        // This Month Card - PRIMARY (larger, prominent)
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(Spacing.radiusLarge),
-                            colors = CardDefaults.cardColors(containerColor = CardBackground),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        // App Bar
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp, bottom = 20.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(
+                            Text(
+                                text = "Trading",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            IconButton(
+                                onClick = onNavigateToSettings,
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(Color.White.copy(alpha = 0.15f), CircleShape)
+                            ) {
+                                Icon(
+                                    Icons.Default.Settings,
+                                    contentDescription = "Settings",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                        
+                        // Hero Profit Card
+                        AnimatedVisibility(
+                            visible = isLoaded,
+                            enter = fadeIn(animationSpec = tween(400)) +
+                                    slideInVertically(initialOffsetY = { 30 })
+                        ) {
+                            Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(Spacing.lg)
+                                    .shadow(12.dp, RoundedCornerShape(20.dp)),
+                                shape = RoundedCornerShape(20.dp),
+                                color = CardWhite
                             ) {
-                                Text(
-                                    text = "This Month Profit",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = TextSecondary
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.Bottom
+                                Column(
+                                    modifier = Modifier.padding(24.dp)
                                 ) {
                                     Text(
-                                        text = "₹${String.format("%,.0f", thisMonthProfitFromTrades)}",
-                                        style = MaterialTheme.typography.headlineLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (thisMonthProfitFromTrades >= 0) SuccessGreen else DangerRed
+                                        text = "This Month",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = TextMuted
                                     )
-                                    // Percentage change badge
+                                    
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    
+                                    // Animated amount
+                                    val animatedAmount by animateFloatAsState(
+                                        targetValue = thisMonthProfit.toFloat(),
+                                        animationSpec = tween(1000, easing = EaseOut),
+                                        label = "amount"
+                                    )
+                                    
+                                    Text(
+                                        text = "₹${String.format("%,.0f", animatedAmount)}",
+                                        style = MaterialTheme.typography.displaySmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (thisMonthProfit >= 0) ProfitGreen else LossRed
+                                    )
+                                    
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    
+                                    // Growth badge
                                     if (percentageChange != 0) {
                                         Surface(
-                                            shape = RoundedCornerShape(12.dp),
-                                            color = if (percentageChange > 0) SuccessGreen.copy(alpha = 0.1f) else DangerRed.copy(alpha = 0.1f)
+                                            shape = RoundedCornerShape(20.dp),
+                                            color = if (percentageChange > 0) 
+                                                ProfitGreen.copy(alpha = 0.1f) 
+                                            else 
+                                                LossRed.copy(alpha = 0.1f)
                                         ) {
                                             Row(
-                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Icon(
-                                                    imageVector = if (percentageChange > 0) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
+                                                    imageVector = if (percentageChange > 0) 
+                                                        Icons.Default.TrendingUp 
+                                                    else 
+                                                        Icons.Default.TrendingDown,
                                                     contentDescription = null,
-                                                    modifier = Modifier.size(14.dp),
-                                                    tint = if (percentageChange > 0) SuccessGreen else DangerRed
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = if (percentageChange > 0) ProfitGreen else LossRed
                                                 )
-                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
                                                 Text(
-                                                    text = "${if (percentageChange > 0) "+" else ""}${percentageChange}% vs last month",
-                                                    style = MaterialTheme.typography.labelSmall,
+                                                    text = "${if (percentageChange > 0) "+" else ""}$percentageChange% vs last month",
+                                                    style = MaterialTheme.typography.labelMedium,
                                                     fontWeight = FontWeight.Medium,
-                                                    color = if (percentageChange > 0) SuccessGreen else DangerRed
+                                                    color = if (percentageChange > 0) ProfitGreen else LossRed
                                                 )
                                             }
                                         }
@@ -227,523 +280,474 @@ fun TradingHomeScreen(
                             }
                         }
                         
-                        // Overall Card - SECONDARY (smaller, muted)
-                        Surface(
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Overall Profit Row
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(Spacing.radiusMedium),
-                            color = BackgroundGray,
-                            tonalElevation = 0.dp
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = Spacing.md, vertical = Spacing.sm),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Overall Profit",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextSecondary
-                                )
-                                Text(
-                                    text = "₹${String.format("%,.0f", totalProfitFromTrades)}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (totalProfitFromTrades >= 0) SuccessGreen else DangerRed
-                                )
-                            }
+                            Text(
+                                text = "Overall Profit",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White.copy(alpha = 0.8f)
+                            )
+                            Text(
+                                text = "₹${String.format("%,.0f", totalProfit)}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
                         }
                     }
                 }
                 
-                // Farm Section Header
+                // ═══════════════════════════════════════════════════════════
+                // FARMS SECTION (White Container)
+                // ═══════════════════════════════════════════════════════════
                 item {
-                    Row(
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+                        color = BgGray
                     ) {
-                        Text(
-                            text = "🏭 Farms",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary
-                        )
-                        TextButton(onClick = { showAddFarmDialog = true }) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Add Farm")
+                        Column(
+                            modifier = Modifier.padding(20.dp)
+                        ) {
+                            Text(
+                                text = "Farms",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = TextDark
+                            )
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
                 }
                 
-                // Empty state or Farm cards
+                // Farm Cards
                 if (farms.isEmpty()) {
                     item {
-                        WhiteCard(
-                            modifier = Modifier.fillMaxWidth(),
-                            elevation = 2.dp
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(BgGray)
+                                .padding(horizontal = 20.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.Agriculture,
-                                    contentDescription = null,
-                                    tint = TextSecondary,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    "No farms yet. Add your first farm!",
-                                    color = TextSecondary,
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
+                            EmptyFarmsCard()
                         }
                     }
                 } else {
-                    // Farm cards - each as individual scrollable item
-                    items(farms, key = { it.id }) { farm ->
+                    itemsIndexed(farms, key = { _, farm -> farm.id }) { index, farm ->
                         val farmTrades = allTrades.filter { it.farmId == farm.id }
-                        val farmTradeCount = farmTrades.size
                         val farmProfit = farmTrades.sumOf { it.profit ?: 0.0 }
-                        val isProfit = farmProfit >= 0
-                        var showFarmMenu by remember { mutableStateOf(false) }
+                        val entryCount = farmTrades.size
                         
-                        Card(
+                        // Generate sparkline data from trades
+                        val sparklineData = remember(farmTrades) {
+                            farmTrades.takeLast(7).map { (it.profit ?: 0.0).toFloat() }
+                        }
+                        
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { onFarmClick(farm.id) },
-                            shape = RoundedCornerShape(Spacing.radiusMedium),
-                            colors = CardDefaults.cardColors(containerColor = CardBackground),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                .background(BgGray)
+                                .padding(horizontal = 20.dp, vertical = 6.dp)
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(Spacing.md),
-                                verticalAlignment = Alignment.CenterVertically
+                            AnimatedVisibility(
+                                visible = isLoaded,
+                                enter = fadeIn(animationSpec = tween(300, delayMillis = 200 + (index * 50))) +
+                                        slideInVertically(initialOffsetY = { 20 })
                             ) {
-                                // Farm icon/badge with color
-                                Surface(
-                                    modifier = Modifier.size(48.dp),
-                                    shape = androidx.compose.foundation.shape.CircleShape,
-                                    color = if (isProfit) SuccessGreen.copy(alpha = 0.1f) else DangerRed.copy(alpha = 0.1f)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = farm.shortCode,
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (isProfit) SuccessGreen else DangerRed
-                                        )
+                                FarmCardWithSparkline(
+                                    farm = farm,
+                                    profit = farmProfit,
+                                    entryCount = entryCount,
+                                    sparklineData = sparklineData,
+                                    colorIndex = index,
+                                    onClick = { onFarmClick(farm.id) },
+                                    onLongPress = {
+                                        hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        selectedFarm = farm
+                                        showContextMenu = true
                                     }
-                                }
-                                
-                                Spacer(modifier = Modifier.width(Spacing.sm))
-                                
-                                // Farm name and entry count
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = farm.name,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = TextPrimary
-                                    )
-                                    Text(
-                                        text = "${farmTradeCount} ${if (farmTradeCount == 1) "entry" else "entries"} • ${if (isProfit) "Profit" else "Loss"}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = TextSecondary
-                                    )
-                                }
-                                
-                                // Profit/Loss amount
-                                Text(
-                                    text = "₹${String.format("%,.0f", kotlin.math.abs(farmProfit))}",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (isProfit) SuccessGreen else DangerRed
                                 )
-                                
-                                // Arrow icon
-                                Icon(
-                                    Icons.Default.ChevronRight,
-                                    contentDescription = "Open farm",
-                                    tint = TextSecondary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                
-                                // 3-dot menu
-                                Box {
-                                    IconButton(
-                                        onClick = { showFarmMenu = true },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.MoreVert,
-                                            contentDescription = "More options",
-                                            tint = TextSecondary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    DropdownMenu(
-                                        expanded = showFarmMenu,
-                                        onDismissRequest = { showFarmMenu = false }
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text("Edit") },
-                                            onClick = {
-                                                showFarmMenu = false
-                                                editingFarm = farm
-                                                editFarmName = farm.name
-                                                editFarmShortCode = farm.shortCode
-                                                showEditFarmDialog = true
-                                            },
-                                            leadingIcon = {
-                                                Icon(
-                                                    Icons.Default.Edit,
-                                                    contentDescription = null,
-                                                    tint = Purple600
-                                                )
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("Delete", color = DangerRed) },
-                                            onClick = {
-                                                showFarmMenu = false
-                                                farmToDelete = farm
-                                            },
-                                            leadingIcon = {
-                                                Icon(
-                                                    Icons.Default.Delete,
-                                                    contentDescription = null,
-                                                    tint = DangerRed
-                                                )
-                                            }
-                                        )
-                                    }
-                                }
                             }
                         }
                     }
+                }
+                
+                // Extra bottom padding
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .background(BgGray)
+                    )
                 }
             }
         }
     }
-
-    // Delete confirmation
-    tradeToDelete?.let { trade ->
-        AlertDialog(
-            onDismissRequest = { tradeToDelete = null },
-            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = DangerRed) },
-            title = { Text("Delete Transaction") },
-            text = { Text("Are you sure you want to delete this ${trade.type} transaction?") },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        viewModel.deleteTrade(trade)
-                        tradeToDelete = null
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed)
-                ) {
-                    Text("Delete")
-                }
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // CONTEXT MENU
+    // ═══════════════════════════════════════════════════════════════════════
+    if (showContextMenu && selectedFarm != null) {
+        ModalBottomSheet(
+            onDismissRequest = { 
+                showContextMenu = false
+                selectedFarm = null 
             },
-            dismissButton = {
-                TextButton(onClick = { tradeToDelete = null }) {
-                    Text("Cancel")
+            containerColor = CardWhite,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp)
+            ) {
+                Text(
+                    text = selectedFarm?.name ?: "",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                
+                ContextMenuItem(
+                    icon = Icons.Default.Edit,
+                    text = "Edit Farm",
+                    color = GradientPurple1
+                ) {
+                    showContextMenu = false
+                    editingFarm = selectedFarm
+                    editFarmName = selectedFarm?.name ?: ""
+                    showEditFarmDialog = true
+                    selectedFarm = null
                 }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                ContextMenuItem(
+                    icon = Icons.Default.Delete,
+                    text = "Delete Farm",
+                    color = LossRed
+                ) {
+                    showContextMenu = false
+                    farmToDelete = selectedFarm
+                    selectedFarm = null
+                }
+                
+                Spacer(modifier = Modifier.height(32.dp))
             }
-        )
+        }
     }
     
-    // Add Farm Dialog
-    if (showAddFarmDialog) {
-        var farmName by remember { mutableStateOf("") }
-        var farmCode by remember { mutableStateOf("") }
-        
-        AlertDialog(
-            onDismissRequest = { showAddFarmDialog = false },
-            title = { Text("🏭 Add Farm", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = farmName,
-                        onValueChange = { farmName = it },
-                        label = { Text("Farm Name") },
-                        placeholder = { Text("e.g., Hindustani Farm") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    OutlinedTextField(
-                        value = farmCode,
-                        onValueChange = { farmCode = it.take(4).uppercase() },
-                        label = { Text("Short Code (2-4 letters)") },
-                        placeholder = { Text("e.g., HF") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    Text(
-                        text = "Entry numbers will be: ${farmCode.ifBlank { "XX" }}-001, ${farmCode.ifBlank { "XX" }}-002...",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (farmName.isNotBlank() && farmCode.isNotBlank()) {
-                            viewModel.addFarm(farmName.trim(), farmCode.trim())
-                            showAddFarmDialog = false
-                        }
-                    },
-                    enabled = farmName.isNotBlank() && farmCode.length >= 2,
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Add Farm")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddFarmDialog = false }) {
-                    Text("Cancel")
-                }
-            },
-            shape = RoundedCornerShape(20.dp)
-        )
-    }
+    // ═══════════════════════════════════════════════════════════════════════
+    // DIALOGS
+    // ═══════════════════════════════════════════════════════════════════════
     
-    // Delete Farm Confirmation Dialog
     farmToDelete?.let { farm ->
         AlertDialog(
             onDismissRequest = { farmToDelete = null },
-            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = DangerRed) },
-            title = { Text("Delete Farm?", fontWeight = FontWeight.Bold) },
-            text = { 
-                Text("Are you sure you want to delete \"${farm.name}\"? All trades in this farm will become unlinked.")
-            },
+            icon = { Icon(Icons.Default.Delete, null, tint = LossRed) },
+            title = { Text("Delete Farm") },
+            text = { Text("Delete \"${farm.name}\" and all its trades?") },
             confirmButton = {
                 Button(
                     onClick = {
                         viewModel.deleteFarm(farm)
                         farmToDelete = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Delete")
-                }
+                    colors = ButtonDefaults.buttonColors(containerColor = LossRed)
+                ) { Text("Delete") }
             },
             dismissButton = {
-                TextButton(onClick = { farmToDelete = null }) {
-                    Text("Cancel")
-                }
-            },
-            shape = RoundedCornerShape(20.dp)
+                TextButton(onClick = { farmToDelete = null }) { Text("Cancel") }
+            }
         )
     }
     
-    // Edit Farm Dialog
-    if (showEditFarmDialog && editingFarm != null) {
+    if (showAddFarmDialog) {
+        var farmName by remember { mutableStateOf("") }
+        val autoShortCode = remember(farmName) {
+            farmName.split(" ").filter { it.isNotBlank() }.take(2)
+                .joinToString("") { it.first().uppercaseChar().toString() }.ifBlank { "FM" }
+        }
+        
         AlertDialog(
-            onDismissRequest = { 
-                showEditFarmDialog = false
-                editingFarm = null
-            },
-            title = { Text("✏️ Edit Farm", fontWeight = FontWeight.Bold) },
+            onDismissRequest = { showAddFarmDialog = false },
+            title = { Text("Add Farm", fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = editFarmName,
-                        onValueChange = { editFarmName = it },
-                        label = { Text("Farm Name") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    OutlinedTextField(
-                        value = editFarmShortCode,
-                        onValueChange = { editFarmShortCode = it.take(4).uppercase() },
-                        label = { Text("Short Code (2-4 letters)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                }
+                OutlinedTextField(
+                    value = farmName,
+                    onValueChange = { farmName = it },
+                    label = { Text("Farm Name") },
+                    placeholder = { Text("e.g., Green Valley Farm") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        editingFarm?.let { farm ->
-                            val updatedFarm = farm.copy(
-                                name = editFarmName.trim(),
-                                shortCode = editFarmShortCode.trim()
-                            )
-                            viewModel.updateFarm(updatedFarm)
+                        if (farmName.isNotBlank()) {
+                            viewModel.addFarm(farmName.trim(), autoShortCode)
+                            showAddFarmDialog = false
                         }
-                        showEditFarmDialog = false
-                        editingFarm = null
                     },
-                    enabled = editFarmName.isNotBlank() && editFarmShortCode.length >= 2,
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text("Save")
-                }
+                    enabled = farmName.isNotBlank()
+                ) { Text("Add") }
             },
             dismissButton = {
-                TextButton(onClick = { 
-                    showEditFarmDialog = false
-                    editingFarm = null
-                }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showAddFarmDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+    
+    if (showEditFarmDialog && editingFarm != null) {
+        val autoShortCode = remember(editFarmName) {
+            editFarmName.split(" ").filter { it.isNotBlank() }.take(2)
+                .joinToString("") { it.first().uppercaseChar().toString() }.ifBlank { "FM" }
+        }
+        
+        AlertDialog(
+            onDismissRequest = { showEditFarmDialog = false; editingFarm = null },
+            title = { Text("Edit Farm", fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = editFarmName,
+                    onValueChange = { editFarmName = it },
+                    label = { Text("Farm Name") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
             },
-            shape = RoundedCornerShape(20.dp)
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (editFarmName.isNotBlank()) {
+                            viewModel.updateFarm(editingFarm!!.copy(name = editFarmName.trim(), shortCode = autoShortCode))
+                            showEditFarmDialog = false
+                            editingFarm = null
+                        }
+                    },
+                    enabled = editFarmName.isNotBlank()
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditFarmDialog = false; editingFarm = null }) { Text("Cancel") }
+            }
         )
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// FARM CARD WITH SPARKLINE
+// ═══════════════════════════════════════════════════════════════════════════
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ModernTradeCard(
-    trade: TradeTransaction,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit
+private fun FarmCardWithSparkline(
+    farm: Farm,
+    profit: Double,
+    entryCount: Int,
+    sparklineData: List<Float>,
+    colorIndex: Int,
+    onClick: () -> Unit,
+    onLongPress: () -> Unit
 ) {
-    val dateStr = SimpleDateFormat("dd MMM, yyyy", Locale.getDefault()).format(Date(trade.date))
-    val profit = trade.profit ?: (trade.totalAmount - trade.buyRate)
+    val isProfit = profit >= 0
+    val farmColor = FarmColors[colorIndex % FarmColors.size]
+    var isPressed by remember { mutableStateOf(false) }
     
-    // Number formatting
-    val indianFormat = java.text.NumberFormat.getCurrencyInstance(Locale("en", "IN"))
-    val numberFormat = java.text.NumberFormat.getNumberInstance(Locale("en", "IN"))
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 1.02f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        label = "scale"
+    )
     
-    val formattedProfit = if (profit < 0) "-₹${numberFormat.format(kotlin.math.abs(profit))}" else "₹${numberFormat.format(profit)}"
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .scale(scale)
+            .shadow(4.dp, RoundedCornerShape(16.dp)),
+        shape = RoundedCornerShape(16.dp),
+        color = CardWhite
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = {
+                        isPressed = true
+                        onLongPress()
+                    }
+                )
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Colored Avatar with Icon
+            Surface(
+                modifier = Modifier.size(48.dp),
+                shape = CircleShape,
+                color = farmColor.copy(alpha = 0.15f)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = getFarmIcon(colorIndex),
+                        contentDescription = null,
+                        tint = farmColor,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.width(12.dp))
+            
+            // Name + Entry count
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = farm.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TextDark
+                )
+                Text(
+                    text = "$entryCount ${if (entryCount == 1) "entry" else "entries"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextMuted
+                )
+            }
+            
+            // Amount
+            Text(
+                text = "₹${String.format("%,.0f", abs(profit))}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (isProfit) ProfitGreen else LossRed
+            )
+            
+            Spacer(modifier = Modifier.width(4.dp))
+            
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = TextMuted.copy(alpha = 0.5f)
+            )
+        }
+    }
     
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(Spacing.radiusLarge),
-        colors = CardDefaults.cardColors(containerColor = CardBackground),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    LaunchedEffect(isPressed) {
+        if (isPressed) {
+            kotlinx.coroutines.delay(150)
+            isPressed = false
+        }
+    }
+}
+
+// Sparkline Chart Component
+@Composable
+private fun SparklineChart(
+    data: List<Float>,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    if (data.isEmpty()) return
+    
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+        val maxValue = data.maxOrNull() ?: 1f
+        val minValue = data.minOrNull() ?: 0f
+        val range = (maxValue - minValue).coerceAtLeast(1f)
+        
+        val path = Path()
+        data.forEachIndexed { index, value ->
+            val x = (index.toFloat() / (data.size - 1).coerceAtLeast(1)) * width
+            val y = height - ((value - minValue) / range * height)
+            
+            if (index == 0) {
+                path.moveTo(x, y)
+            } else {
+                path.lineTo(x, y)
+            }
+        }
+        
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+        )
+        
+        // Draw dots
+        data.forEachIndexed { index, value ->
+            val x = (index.toFloat() / (data.size - 1).coerceAtLeast(1)) * width
+            val y = height - ((value - minValue) / range * height)
+            drawCircle(color = color, radius = 2.dp.toPx(), center = Offset(x, y))
+        }
+    }
+}
+
+// Get farm icon based on index
+private fun getFarmIcon(index: Int): ImageVector {
+    return when (index % 6) {
+        0 -> Icons.Default.Agriculture
+        1 -> Icons.Default.Grass
+        2 -> Icons.Default.WbSunny
+        3 -> Icons.Default.Nature
+        4 -> Icons.Default.Park
+        else -> Icons.Default.Eco
+    }
+}
+
+@Composable
+private fun EmptyFarmsCard() {
+    Surface(
+        modifier = Modifier.fillMaxWidth().shadow(4.dp, RoundedCornerShape(16.dp)),
+        shape = RoundedCornerShape(16.dp),
+        color = CardWhite
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().padding(32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Main Content Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(Spacing.md),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Icon / Avatar
-                Surface(
-                    modifier = Modifier.size(48.dp),
-                    shape = androidx.compose.foundation.shape.CircleShape,
-                    color = Purple50
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = trade.itemName.take(1).uppercase(),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = Purple600
-                        )
-                    }
-                }
+            Icon(
+                Icons.Default.Agriculture,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp),
+                tint = TextMuted.copy(alpha = 0.4f)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text("No farms yet", fontWeight = FontWeight.Medium, color = TextMuted)
+            Text("Tap + to add your first farm", style = MaterialTheme.typography.bodySmall, color = TextMuted.copy(alpha = 0.6f))
+        }
+    }
+}
 
-                Spacer(modifier = Modifier.width(Spacing.md))
-
-                // Title & Date with Location
-                Column(modifier = Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = trade.itemName,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary
-                        )
-                        trade.deonar?.let { location ->
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "• $location",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextSecondary
-                            )
-                        }
-                    }
-                    Text(
-                        text = dateStr,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary
-                    )
-                }
-
-                // Profit Badge
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = if (profit >= 0) "Profit" else "Loss",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextSecondary
-                    )
-                    Text(
-                        text = formattedProfit,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (profit >= 0) SuccessGreen else DangerRed
-                    )
-                }
-            }
-
-            // Details Section (Gray bg)
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = BackgroundGray.copy(alpha = 0.5f)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = Spacing.md, vertical = Spacing.sm),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Calculation logic text
-                    Text(
-                        text = "${trade.quantity} x ₹${numberFormat.format(trade.buyRate)} = ₹${numberFormat.format(trade.totalAmount)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.weight(1f)
-                    )
-                    
-                    // Actions
-                    Row {
-                        TextButton(
-                            onClick = onEdit,
-                            contentPadding = PaddingValues(0.dp),
-                            modifier = Modifier.height(32.dp).width(60.dp)
-                        ) {
-                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Edit", fontSize = 12.sp)
-                        }
-                        TextButton(
-                            onClick = onDelete,
-                            contentPadding = PaddingValues(0.dp),
-                            modifier = Modifier.height(32.dp).width(70.dp),
-                            colors = ButtonDefaults.textButtonColors(contentColor = DangerRed)
-                        ) {
-                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Delete", fontSize = 12.sp)
-                        }
-                    }
-                }
-            }
+@Composable
+private fun ContextMenuItem(
+    icon: ImageVector,
+    text: String,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        color = color.copy(alpha = 0.08f)
+    ) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = color)
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(text, fontWeight = FontWeight.Medium, color = color)
         }
     }
 }

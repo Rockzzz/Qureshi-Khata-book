@@ -43,4 +43,7 @@ interface CustomerDao {
     
     @Query("DELETE FROM customers")
     suspend fun deleteAllCustomers()
+    
+    @Query("SELECT * FROM customers")
+    suspend fun getAllCustomersSync(): List<Customer>
 }

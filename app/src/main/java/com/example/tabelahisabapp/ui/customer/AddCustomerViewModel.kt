@@ -26,7 +26,7 @@ class AddCustomerViewModel @Inject constructor(
         }
     }
 
-    suspend fun saveCustomer(customerId: Int?, name: String, phone: String?, type: String = "CUSTOMER", originalCreatedAt: Long? = null): Result<Unit> {
+    suspend fun saveCustomer(customerId: Int?, name: String, phone: String?, type: String = "CUSTOMER", originalCreatedAt: Long? = null, notes: String? = null): Result<Unit> {
         if (name.isBlank()) {
             return Result.failure(Exception("Name cannot be empty"))
         }
@@ -53,6 +53,7 @@ class AddCustomerViewModel @Inject constructor(
             name = name.trim(),
             phone = phone?.trim(),
             type = type,
+            notes = notes,
             createdAt = createdAt
         )
         repository.insertOrUpdateCustomer(customer)

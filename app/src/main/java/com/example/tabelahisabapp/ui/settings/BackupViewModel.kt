@@ -8,11 +8,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.tabelahisabapp.data.backup.BackupInfo
 import com.example.tabelahisabapp.data.backup.BackupManager
+import com.example.tabelahisabapp.data.backup.DriveBackupInfo
 import com.example.tabelahisabapp.data.backup.GoogleDriveBackupManager
 import com.example.tabelahisabapp.data.preferences.BackupPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
@@ -51,12 +54,15 @@ data class BackupUiState(
     val showFullRestoreDialog: Boolean = false,
     val showTransactionRestoreDialog: Boolean = false,
     val showEmergencyRestoreDialog: Boolean = false,
+    val showDriveRestoreDialog: Boolean = false,
+    val driveBackups: List<DriveBackupInfo> = emptyList(),
     
     val message: String? = null
 )
 
 @HiltViewModel
 class BackupViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val backupManager: BackupManager,
     private val backupPreferences: BackupPreferences,
     private val googleDriveManager: GoogleDriveBackupManager
@@ -186,11 +192,25 @@ class BackupViewModel @Inject constructor(
                     if (_uiState.value.googleDriveEnabled) {
                         try {
                             _uiState.update { it.copy(isGoogleDriveSyncing = true) }
-                            googleDriveManager.syncLatestBackup(backupManager)
-                            _uiState.update { it.copy(
-                                isGoogleDriveSyncing = false,
-                                lastGoogleDriveSync = "Just now"
-                            )}
+                            
+                            // Check the Result to ensure upload actually succeeded
+                            val syncResult = googleDriveManager.syncLatestBackup(backupManager)
+                            
+                            syncResult.fold(
+                                onSuccess = {
+                                    // Only update sync time when upload actually succeeds
+                                    _uiState.update { it.copy(
+                                        isGoogleDriveSyncing = false,
+                                        lastGoogleDriveSync = "Just now"
+                                    )}
+                                },
+                                onFailure = { error ->
+                                    // Don't update sync time on failure
+                                    _uiState.update { it.copy(isGoogleDriveSyncing = false) }
+                                    // Log error silently
+                                    error.printStackTrace()
+                                }
+                            )
                         } catch (e: Exception) {
                             e.printStackTrace()
                             _uiState.update { it.copy(isGoogleDriveSyncing = false) }
@@ -357,7 +377,27 @@ class BackupViewModel @Inject constructor(
     // ============ RESTORE ACTIONS ============
 
     fun showFullRestoreDialog() {
-        _uiState.update { it.copy(showFullRestoreDialog = true) }
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            
+            try {
+                // Refresh the backup list before showing dialog
+                val backups = backupManager.getAvailableBackups()
+                android.util.Log.d("BackupViewModel", "Loaded ${backups.size} backups for restore dialog")
+                
+                _uiState.update { it.copy(
+                    showFullRestoreDialog = true,
+                    availableBackups = backups,
+                    isLoading = false
+                )}
+            } catch (e: Exception) {
+                android.util.Log.e("BackupViewModel", "Error loading backups", e)
+                _uiState.update { it.copy(
+                    isLoading = false,
+                    message = "Error loading backups: ${e.message}"
+                )}
+            }
+        }
     }
 
     fun hideFullRestoreDialog() {
@@ -382,6 +422,82 @@ class BackupViewModel @Inject constructor(
 
     fun hideRecoveryDialog() {
         _uiState.update { it.copy(showRecoveryDialog = false) }
+    }
+    
+    // ============ GOOGLE DRIVE RESTORE ============
+    
+    fun showDriveRestoreDialog() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            
+            try {
+                val result = googleDriveManager.listDriveBackups()
+                result.fold(
+                    onSuccess = { backups ->
+                        _uiState.update { it.copy(
+                            showDriveRestoreDialog = true,
+                            driveBackups = backups,
+                            isLoading = false
+                        )}
+                    },
+                    onFailure = { error ->
+                        _uiState.update { it.copy(
+                            isLoading = false,
+                            message = "Failed to load Drive backups: ${error.message}"
+                        )}
+                    }
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.update { it.copy(
+                    isLoading = false,
+                    message = "Error loading backups: ${e.message}"
+                )}
+            }
+        }
+    }
+    
+    fun hideDriveRestoreDialog() {
+        _uiState.update { it.copy(showDriveRestoreDialog = false) }
+    }
+    
+    fun restoreFromDrive(driveFileId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, showDriveRestoreDialog = false) }
+            
+            try {
+                // Download from Drive to temp file
+                val tempFile = File(context.cacheDir, "temp_restore.json")
+                val downloadResult = googleDriveManager.downloadBackup(driveFileId, tempFile)
+                
+                downloadResult.fold(
+                    onSuccess = { file ->
+                        // Restore from downloaded file
+                        val restoreResult = backupManager.restoreFromBackup(file.absolutePath)
+                        
+                        _uiState.update { it.copy(
+                            isLoading = false,
+                            message = if (restoreResult.success) 
+                                "Restored from Drive! Please restart the app." 
+                            else 
+                                "Restore failed: ${restoreResult.error}"
+                        )}
+                    },
+                    onFailure = { error ->
+                        _uiState.update { it.copy(
+                            isLoading = false,
+                            message = "Download failed: ${error.message}"
+                        )}
+                    }
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.update { it.copy(
+                    isLoading = false,
+                    message = "Error: ${e.message}"
+                )}
+            }
+        }
     }
 
     fun restoreFromBackup(backupPath: String) {
@@ -432,7 +548,129 @@ class BackupViewModel @Inject constructor(
             }
         }
     }
+    
+    /**
+     * Restore from a file Uri selected via file picker
+     */
+    fun restoreFromFileUri(activityContext: android.content.Context, uri: android.net.Uri) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            
+            try {
+                // Read the file content from Uri
+                val inputStream = activityContext.contentResolver.openInputStream(uri)
+                if (inputStream == null) {
+                    _uiState.update { it.copy(
+                        isLoading = false,
+                        message = "Could not open the selected file"
+                    )}
+                    return@launch
+                }
+                
+                val jsonContent = inputStream.bufferedReader().use { it.readText() }
+                inputStream.close()
+                
+                // Save to temp file
+                val tempFile = File(activityContext.cacheDir, "temp_restore_${System.currentTimeMillis()}.json")
+                tempFile.writeText(jsonContent)
+                
+                // Create backup of current data first
+                backupManager.createDailyBackup()
+                
+                // Restore from the temp file
+                val result = backupManager.restoreFromBackup(tempFile.absolutePath)
+                
+                // Clean up temp file
+                tempFile.delete()
+                
+                _uiState.update { it.copy(
+                    isLoading = false,
+                    message = if (result.success) 
+                        "Data restored successfully! Please restart the app." 
+                    else 
+                        "Restore failed: ${result.error}"
+                )}
+                
+            } catch (e: Exception) {
+                android.util.Log.e("BackupViewModel", "Error restoring from file", e)
+                _uiState.update { it.copy(
+                    isLoading = false,
+                    message = "Restore failed: ${e.message}"
+                )}
+            }
+        }
+    }
 
+    // ============ FOLDER ACCESS ============
+    
+    /**
+     * Get the local backup folder path
+     */
+    fun getLocalBackupFolderPath(): String {
+        return backupManager.getBackupFolderPath()
+    }
+    
+    /**
+     * Share the latest backup file using Android's share intent
+     */
+    fun shareLatestBackup(activityContext: android.content.Context) {
+        viewModelScope.launch {
+            try {
+                val backups = backupManager.getAvailableBackups()
+                val latestBackup = backups.firstOrNull()
+                
+                if (latestBackup == null) {
+                    _uiState.update { it.copy(message = "No backup available to share") }
+                    return@launch
+                }
+                
+                val file = File(latestBackup.filePath)
+                if (!file.exists()) {
+                    _uiState.update { it.copy(message = "Backup file not found") }
+                    return@launch
+                }
+                
+                // Use FileProvider to get a content URI
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    activityContext,
+                    "${activityContext.packageName}.fileprovider",
+                    file
+                )
+                
+                // Create share intent
+                val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "application/json"
+                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                    putExtra(android.content.Intent.EXTRA_SUBJECT, "Qureshi Khata Book Backup")
+                    putExtra(android.content.Intent.EXTRA_TEXT, "Backup file: ${file.name}")
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                
+                // Launch chooser
+                val chooserIntent = android.content.Intent.createChooser(shareIntent, "Share Backup")
+                activityContext.startActivity(chooserIntent)
+                
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _uiState.update { it.copy(message = "Error sharing backup: ${e.message}") }
+            }
+        }
+    }
+    
+    /**
+     * Get the Google Drive backup folder URL
+     * Opens the "Qureshi Khata Book" folder in Google Drive web
+     */
+    fun getGoogleDriveFolderUrl(): String? {
+        // Google Drive folder URL format for app data folder
+        // The app stores backups in "Qureshi Khata Book/Daily" folder
+        return if (_uiState.value.googleDriveEnabled) {
+            "https://drive.google.com/drive/search?q=type:folder%20%22Qureshi%20Khata%20Book%22"
+        } else {
+            null
+        }
+    }
+    
     // ============ UTILITY ============
 
     fun clearMessage() {

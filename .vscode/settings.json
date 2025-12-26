@@ -1,0 +1,6 @@
+{
+  // NOTE: JDK 25 is too new for Android development toolchain.
+  // Use JDK 17 (LTS) instead. Install from: https://adoptium.net/temurin/releases/?version=17
+  // After installing JDK 17, update the path below:
+  "java.jdt.ls.java.home": "C:\\\\Program Files\\\\Eclipse Adoptium\\\\jdk-17.0.17.10-hotspot"
+}

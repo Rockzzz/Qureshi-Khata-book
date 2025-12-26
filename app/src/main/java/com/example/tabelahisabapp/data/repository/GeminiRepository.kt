@@ -462,6 +462,26 @@ class GeminiRepository @Inject constructor() {
         return "CREDIT"
     }
 
+    
+    /**
+     * Auto-correct common name mistakes from voice recognition
+     * Maps: "Ejaz" -> "Aijaz", etc.
+     */
+    private fun correctCommonNames(name: String): String {
+        val nameCorrections = mapOf(
+            "ejaz" to "Aijaz",
+            "gafar" to "Gaffar",
+            "gaffer" to "Gaffar",
+            "jaffar" to "Gaffar",
+            "rauf" to "Rauf lala",
+            "raoof" to "Rauf lala",
+            "raouf" to "Rauf lala"
+        )
+        
+        val lowerName = name.lowercase().trim()
+        return nameCorrections[lowerName] ?: name
+    }
+
     /**
      * Extract customer name from text
      * Enhanced to strip common suffixes like "bhai", "sahab", "wale"
@@ -505,7 +525,10 @@ class GeminiRepository @Inject constructor() {
                     !workerTitles.contains(cleanedName.lowercase()) &&
                     !expenseCategories.contains(cleanedName.lowercase()) &&
                     !nameSuffixes.contains(cleanedName.lowercase())) {
-                    return cleanedName.replaceFirstChar { it.uppercase() }
+                    
+                    // Apply name correction before returning
+                    val correctedName = correctCommonNames(cleanedName)
+                    return correctedName.replaceFirstChar { it.uppercase() }
                 }
             }
         }

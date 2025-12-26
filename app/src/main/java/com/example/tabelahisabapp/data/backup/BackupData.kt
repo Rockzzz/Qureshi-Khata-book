@@ -53,6 +53,11 @@ data class CustomerBackup(
     val name: String,
     val phone: String?,
     val type: String,
+    val email: String? = null,
+    val businessName: String? = null,
+    val category: String? = null,
+    val openingBalance: Double = 0.0,
+    val notes: String? = null,
     val createdAt: Long
 )
 
@@ -96,6 +101,7 @@ data class DailyExpenseBackup(
     val category: String,
     val amount: Double,
     val paymentMethod: String,
+    val note: String? = null,
     val createdAt: Long
 )
 
@@ -112,6 +118,9 @@ data class TradeTransactionBackup(
     val weight: Double?,
     val rate: Double?,
     val extraBonus: Double?,
+    val netWeight: Double? = null,
+    val fee: Double? = null,
+    val tds: Double? = null,
     val totalAmount: Double,
     val profit: Double?,
     val pricePerUnit: Double,

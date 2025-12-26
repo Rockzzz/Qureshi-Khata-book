@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.dp
 fun SettingsScreen(
     onNavigateToBackup: () -> Unit,
     onNavigateToExport: () -> Unit,
+    onNavigateToBulkImport: () -> Unit = {},
     onNavigateToTheme: () -> Unit,
     onNavigateToCompany: () -> Unit,
     onNavigateToAbout: () -> Unit
@@ -67,6 +68,14 @@ fun SettingsScreen(
                 title = "Export & Print",
                 subtitle = "Generate reports & exports",
                 onClick = onNavigateToExport
+            )
+            
+            // Bulk Import (NEW)
+            SettingsItem(
+                icon = Icons.Default.FileUpload,
+                title = "Bulk Import",
+                subtitle = "Import historical data from CSV",
+                onClick = onNavigateToBulkImport
             )
 
             // Theme

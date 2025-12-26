@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import com.example.tabelahisabapp.data.db.entity.DailyLedgerTransaction
 import kotlinx.coroutines.flow.Flow
 
@@ -14,11 +15,17 @@ interface DailyLedgerTransactionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateTransaction(transaction: DailyLedgerTransaction)
 
+    @Update
+    suspend fun updateTransaction(transaction: DailyLedgerTransaction)
+
     @Delete
     suspend fun deleteTransaction(transaction: DailyLedgerTransaction)
 
     @Query("SELECT * FROM daily_ledger_transactions WHERE date = :date ORDER BY createdAt ASC")
     fun getTransactionsByDate(date: Long): Flow<List<DailyLedgerTransaction>>
+    
+    @Query("SELECT * FROM daily_ledger_transactions WHERE date = :date ORDER BY createdAt ASC")
+    suspend fun getTransactionsForDateSync(date: Long): List<DailyLedgerTransaction>
 
     @Query("SELECT * FROM daily_ledger_transactions WHERE id = :transactionId")
     suspend fun getTransactionById(transactionId: Int): DailyLedgerTransaction?
@@ -49,6 +56,15 @@ interface DailyLedgerTransactionDao {
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTransaction(transaction: DailyLedgerTransaction)
+    
+    @Query("SELECT * FROM daily_ledger_transactions WHERE sourceType = :sourceType AND sourceId = :sourceId LIMIT 1")
+    suspend fun getBySourceId(sourceType: String, sourceId: Int): DailyLedgerTransaction?
+    
+    @Query("SELECT DISTINCT date FROM daily_ledger_transactions ORDER BY date DESC")
+    fun getAllDistinctDates(): Flow<List<Long>>
+    
+    @Query("SELECT DISTINCT date FROM daily_ledger_transactions WHERE date >= :fromDate ORDER BY date ASC")
+    suspend fun getDistinctDatesFrom(fromDate: Long): List<Long>
 }
 
 data class TransactionTotals(

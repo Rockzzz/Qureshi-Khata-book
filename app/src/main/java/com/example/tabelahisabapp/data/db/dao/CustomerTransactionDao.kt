@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import com.example.tabelahisabapp.data.db.entity.CustomerTransaction
 import com.example.tabelahisabapp.data.db.models.CustomerBalanceSummary
 import kotlinx.coroutines.flow.Flow
@@ -14,6 +15,9 @@ interface CustomerTransactionDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdateTransaction(transaction: CustomerTransaction)
+    
+    @Update
+    suspend fun update(transaction: CustomerTransaction)
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAndGetId(transaction: CustomerTransaction): Long
@@ -49,6 +53,11 @@ interface CustomerTransactionDao {
             c.name as cust_name,
             c.phone as cust_phone,
             c.type as cust_type,
+            c.email as cust_email,
+            c.businessName as cust_businessName,
+            c.category as cust_category,
+            c.openingBalance as cust_openingBalance,
+            c.notes as cust_notes,
             c.createdAt as cust_createdAt
         FROM customer_transactions t
         INNER JOIN customers c ON t.customerId = c.id

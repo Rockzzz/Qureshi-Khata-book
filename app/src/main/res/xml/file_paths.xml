@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- App's external files directory where backups are stored -->
+    <!-- Path: /storage/emulated/0/Android/data/com.example.tabelahisabapp/files/ -->
+    <external-files-path
+        name="external_files"
+        path="." />
+    
+    <!-- Internal files directory (fallback) -->
+    <files-path
+        name="internal_files"
+        path="." />
+    
+    <!-- Cache directory for temp files -->
+    <cache-path
+        name="cache"
+        path="." />
+</paths>

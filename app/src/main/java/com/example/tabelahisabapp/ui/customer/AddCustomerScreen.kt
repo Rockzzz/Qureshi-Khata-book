@@ -2,13 +2,12 @@ package com.example.tabelahisabapp.ui.customer
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,8 +34,8 @@ fun AddCustomerScreen(
     val scope = rememberCoroutineScope()
     
     var name by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var contactType by remember { mutableStateOf("CUSTOMER") } // CUSTOMER, SELLER, BOTH
+    var notes by remember { mutableStateOf("") }
+    var contactType by remember { mutableStateOf("CUSTOMER") } // Always CUSTOMER now
     var originalCreatedAt by remember { mutableStateOf<Long?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -46,7 +45,7 @@ fun AddCustomerScreen(
             scope.launch {
                 viewModel.getCustomer(customerId)?.let { customer ->
                     name = customer.name
-                    phone = customer.phone ?: ""
+                    notes = customer.notes ?: ""
                     contactType = customer.type
                     originalCreatedAt = customer.createdAt
                 }
@@ -57,7 +56,7 @@ fun AddCustomerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (isEditMode) "Edit Contact" else "Add Contact") },
+                title = { Text(if (isEditMode) "Edit Customer" else "Add Customer") },
                 navigationIcon = {
                     IconButton(onClick = onCancel) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -71,92 +70,41 @@ fun AddCustomerScreen(
                 .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            // Contact Type Selector
-            Text(
-                "Contact Type",
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ContactTypeChip(
-                    label = "Customer",
-                    emoji = "👤",
-                    description = "Jisko aap paisa dete ho",
-                    isSelected = contactType == "CUSTOMER",
-                    onClick = { contactType = "CUSTOMER" },
-                    modifier = Modifier.weight(1f)
-                )
-                ContactTypeChip(
-                    label = "Seller",
-                    emoji = "🏪",
-                    description = "Jisse aap khareedtey ho",
-                    isSelected = contactType == "SELLER",
-                    onClick = { contactType = "SELLER" },
-                    modifier = Modifier.weight(1f)
-                )
-                ContactTypeChip(
-                    label = "Both",
-                    emoji = "👤🏪",
-                    description = "Dono kaam karta hai",
-                    isSelected = contactType == "BOTH",
-                    onClick = { contactType = "BOTH" },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
             // Name field
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
                 label = { Text("Name") },
-                placeholder = { Text("e.g. Aijaz, Gaffar") },
+                placeholder = { Text("Enter customer name") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 leadingIcon = {
-                    when (contactType) {
-                        "CUSTOMER" -> Icon(Icons.Default.Person, contentDescription = null)
-                        "SELLER" -> Icon(Icons.Default.Store, contentDescription = null)
-                        else -> Row {
-                            Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Icon(Icons.Default.Store, contentDescription = null, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-            )
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // Phone field
-            OutlinedTextField(
-                value = phone,
-                onValueChange = { phone = it },
-                label = { Text("Phone (Optional)") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // Help text based on type
-            Text(
-                text = when (contactType) {
-                    "CUSTOMER" -> "💡 Customer: Jo aapko paisa deta hai ya jisko aap udhaar dete ho (jaise Aijaz)"
-                    "SELLER" -> "💡 Seller: Jisse aap maal khareedtey ho (jaise Gaffar - buffalo seller)"
-                    else -> "💡 Both: Jo customer bhi hai aur seller bhi"
+                    Icon(Icons.Default.Person, contentDescription = null)
                 },
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                shape = RoundedCornerShape(12.dp)
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Notes field
+            OutlinedTextField(
+                value = notes,
+                onValueChange = { notes = it },
+                label = { Text("Notes (Optional)") },
+                placeholder = { Text("Add any notes about this customer") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                minLines = 2,
+                maxLines = 4,
+                leadingIcon = {
+                    Icon(Icons.Default.Notes, contentDescription = null)
+                },
+                shape = RoundedCornerShape(12.dp)
             )
             
             // Error message
             errorMessage?.let { error ->
+                Spacer(modifier = Modifier.height(16.dp))
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                     modifier = Modifier.fillMaxWidth()
@@ -181,13 +129,11 @@ fun AddCustomerScreen(
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.weight(1f))
             
             // Save button
-            val scope = rememberCoroutineScope()
             Button(
                 onClick = {
                     errorMessage = null
@@ -195,70 +141,42 @@ fun AddCustomerScreen(
                         val result = viewModel.saveCustomer(
                             customerId, 
                             name, 
-                            phone.ifBlank { null }, 
+                            null,  // No phone 
                             contactType, 
-                            originalCreatedAt
+                            originalCreatedAt,
+                            notes.ifBlank { null }
                         )
                         result.fold(
                             onSuccess = { onCustomerAdded() },
                             onFailure = { error ->
-                                errorMessage = error.message ?: "Failed to save contact"
+                                errorMessage = error.message ?: "Failed to save customer"
                             }
                         )
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = name.isNotBlank()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                enabled = name.isNotBlank(),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Save")
+                Text("Save", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             }
             
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             
             // Cancel button
             OutlinedButton(
                 onClick = onCancel,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Cancel")
+                Text("Cancel", fontSize = 16.sp)
             }
-        }
-    }
-}
-
-@Composable
-fun ContactTypeChip(
-    label: String,
-    emoji: String,
-    description: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier
-            .selectable(selected = isSelected, onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        border = if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-        colors = CardDefaults.cardColors(
-            containerColor = if (isSelected) 
-                MaterialTheme.colorScheme.primaryContainer 
-            else 
-                MaterialTheme.colorScheme.surface
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(emoji, fontSize = 24.sp)
-            Text(
-                label,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                fontSize = 12.sp
-            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
