@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
@@ -18,13 +19,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.Image
+import kotlinx.coroutines.launch
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -55,6 +62,7 @@ import com.example.tabelahisabapp.ui.trading.FarmDetailScreen
 import com.example.tabelahisabapp.ui.voice.VoiceRecordingScreen
 import com.example.tabelahisabapp.ui.voice.VoiceConfirmationScreen
 import com.example.tabelahisabapp.ui.voice.VoiceClarificationScreen
+import com.example.tabelahisabapp.ui.splash.AnimatedSplashScreen
 import com.example.tabelahisabapp.data.preferences.ThemePreferences
 import com.example.tabelahisabapp.ui.expense.AddExpenseScreen
 import com.example.tabelahisabapp.ui.supplier.AddSupplierScreen
@@ -69,6 +77,9 @@ class MainActivity : ComponentActivity() {
     lateinit var themePreferences: ThemePreferences
     
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Install splash screen - must be called before super.onCreate()
+        installSplashScreen()
+        
         super.onCreate(savedInstanceState)
         setContent {
             // Use remember to safely access themePreferences
@@ -117,9 +128,27 @@ fun AppNavigation() {
     BackHandler(enabled = currentRoute == "home") {
         showExitDialog = true
     }
+    
+    // State for exit animation
+    var isExiting by remember { mutableStateOf(false) }
 
-    // Exit confirmation dialog - Beautiful centered design
+    // Exit confirmation dialog - Premium dark theme matching app UI
     if (showExitDialog) {
+        // Animation state
+        var isVisible by remember { mutableStateOf(false) }
+        LaunchedEffect(Unit) { isVisible = true }
+        
+        val scale by animateFloatAsState(
+            targetValue = if (isVisible && !isExiting) 1f else 0.8f,
+            animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f),
+            label = "scale"
+        )
+        val alpha by animateFloatAsState(
+            targetValue = if (isVisible && !isExiting) 1f else 0f,
+            animationSpec = tween(200),
+            label = "alpha"
+        )
+        
         Dialog(
             onDismissRequest = { showExitDialog = false },
             properties = DialogProperties(
@@ -129,46 +158,51 @@ fun AppNavigation() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f)),
+                    .background(Color.Black.copy(alpha = 0.5f * alpha)),
                 contentAlignment = Alignment.Center
             ) {
                 Card(
                     modifier = Modifier
                         .padding(32.dp)
-                        .fillMaxWidth(0.85f),
-                    shape = RoundedCornerShape(24.dp),
+                        .fillMaxWidth(0.85f)
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                            this.alpha = alpha
+                        },
+                    shape = RoundedCornerShape(28.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     ),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                    elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
                 ) {
                     Column(
                         modifier = Modifier
-                            .padding(24.dp)
+                            .background(
+                                brush = Brush.verticalGradient(
+                                    colors = if (isDark) {
+                                        listOf(Color(0xFF2D2D3D), Color(0xFF1E1E2E))
+                                    } else {
+                                        listOf(Color(0xFFF8F9FA), Color(0xFFFFFFFF))
+                                    }
+                                )
+                            )
+                            .padding(28.dp)
                             .fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // Exit Icon
-                        Surface(
-                            modifier = Modifier.size(64.dp),
-                            shape = CircleShape,
-                            color = Purple50
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.ExitToApp,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(32.dp),
-                                    tint = Purple600
-                                )
-                            }
-                        }
+                        // App Logo
+                        Image(
+                            painter = painterResource(id = R.mipmap.ic_launcher_foreground),
+                            contentDescription = "App Logo",
+                            modifier = Modifier.size(100.dp)
+                        )
                         
                         Spacer(modifier = Modifier.height(16.dp))
                         
                         // Title
                         Text(
-                            text = "Exit App?",
+                            text = "Leaving So Soon?",
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -178,46 +212,59 @@ fun AppNavigation() {
                         
                         // Message
                         Text(
-                            text = "Are you sure you want to exit the application?",
+                            text = "We'll miss you! Are you sure you want to exit?",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
                             textAlign = TextAlign.Center
                         )
                         
-                        Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(28.dp))
                         
                         // Buttons Row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            // Cancel Button
-                            OutlinedButton(
+                            // Stay Button (Cancel)
+                            Button(
                                 onClick = { showExitDialog = false },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(50.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFF667EEA),
+                                    contentColor = Color.White
                                 )
                             ) {
                                 Text(
-                                    "Cancel",
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.padding(vertical = 4.dp)
+                                    "Stay",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
                                 )
                             }
                             
-                            // Exit Button
-                            Button(
+                            // Exit Button with animation
+                            OutlinedButton(
                                 onClick = { 
-                                    showExitDialog = false
-                                    (navController.context as? ComponentActivity)?.finish()
+                                    isExiting = true
+                                    // Delay exit to show animation
+                                    kotlinx.coroutines.MainScope().launch {
+                                        kotlinx.coroutines.delay(300)
+                                        showExitDialog = false
+                                        (navController.context as? ComponentActivity)?.finishAffinity()
+                                    }
                                 },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFE53935),
-                                    contentColor = Color.White
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(50.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp, 
+                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                                ),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                                 )
                             ) {
                                 Icon(
@@ -225,11 +272,11 @@ fun AppNavigation() {
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp)
                                 )
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     "Exit",
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(vertical = 4.dp)
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 15.sp
                                 )
                             }
                         }
@@ -310,7 +357,7 @@ fun AppNavigation() {
     ) { paddingValues ->
         NavHost(
             navController = navController,
-            startDestination = "home",
+            startDestination = "splash",
             modifier = Modifier.padding(paddingValues),
             enterTransition = { 
                 slideInHorizontally(
@@ -337,6 +384,19 @@ fun AppNavigation() {
                 ) + fadeOut(animationSpec = tween(300))
             }
         ) {
+            // ═══════════════════════════════════════════════════════════════════
+            // ANIMATED SPLASH SCREEN
+            // ═══════════════════════════════════════════════════════════════════
+            composable("splash") {
+                AnimatedSplashScreen(
+                    onSplashComplete = {
+                        navController.navigate("home") {
+                            popUpTo("splash") { inclusive = true }
+                        }
+                    }
+                )
+            }
+            
             // ═══════════════════════════════════════════════════════════════════
             // HOME DASHBOARD
             // ═══════════════════════════════════════════════════════════════════

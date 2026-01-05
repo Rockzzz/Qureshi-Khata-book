@@ -48,15 +48,12 @@ import kotlin.math.abs
 // ANTIGRAVITY UI - TRADING SCREEN (Gemini-Inspired Design)
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Color System
+// Color System - Using accent colors (theme-independent)
 private val GradientPurple1 = Color(0xFF6366F1)
 private val GradientPurple2 = Color(0xFF8B5CF6)
 private val ProfitGreen = Color(0xFF10B981)
 private val LossRed = Color(0xFFEF4444)
-private val CardWhite = Color.White
-private val TextDark = Color(0xFF1E293B)
-private val TextMuted = Color(0xFF64748B)
-private val BgGray = Color(0xFFF8FAFC)
+// Note: Card and text colors now use MaterialTheme.colorScheme for dark mode support
 
 // Farm icon colors
 private val FarmColors = listOf(
@@ -215,7 +212,7 @@ fun TradingHomeScreen(
                                     .fillMaxWidth()
                                     .shadow(12.dp, RoundedCornerShape(20.dp)),
                                 shape = RoundedCornerShape(20.dp),
-                                color = CardWhite
+                                color = MaterialTheme.colorScheme.surface
                             ) {
                                 Column(
                                     modifier = Modifier.padding(24.dp)
@@ -223,7 +220,7 @@ fun TradingHomeScreen(
                                     Text(
                                         text = "This Month",
                                         style = MaterialTheme.typography.labelLarge,
-                                        color = TextMuted
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     
                                     Spacer(modifier = Modifier.height(8.dp))
@@ -312,7 +309,7 @@ fun TradingHomeScreen(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-                        color = BgGray
+                        color = MaterialTheme.colorScheme.background
                     ) {
                         Column(
                             modifier = Modifier.padding(20.dp)
@@ -321,7 +318,7 @@ fun TradingHomeScreen(
                                 text = "Farms",
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
-                                color = TextDark
+                                color = MaterialTheme.colorScheme.onSurface
                             )
                             
                             Spacer(modifier = Modifier.height(16.dp))
@@ -335,7 +332,7 @@ fun TradingHomeScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(BgGray)
+                                .background(MaterialTheme.colorScheme.background)
                                 .padding(horizontal = 20.dp)
                         ) {
                             EmptyFarmsCard()
@@ -355,7 +352,7 @@ fun TradingHomeScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(BgGray)
+                                .background(MaterialTheme.colorScheme.background)
                                 .padding(horizontal = 20.dp, vertical = 6.dp)
                         ) {
                             AnimatedVisibility(
@@ -387,7 +384,7 @@ fun TradingHomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp)
-                            .background(BgGray)
+                            .background(MaterialTheme.colorScheme.background)
                     )
                 }
             }
@@ -403,7 +400,7 @@ fun TradingHomeScreen(
                 showContextMenu = false
                 selectedFarm = null 
             },
-            containerColor = CardWhite,
+            containerColor = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             Column(
@@ -578,7 +575,7 @@ private fun FarmCardWithSparkline(
             .scale(scale)
             .shadow(4.dp, RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
-        color = CardWhite
+        color = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier
@@ -617,12 +614,12 @@ private fun FarmCardWithSparkline(
                     text = farm.name,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = TextDark
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = "$entryCount ${if (entryCount == 1) "entry" else "entries"}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             
@@ -640,7 +637,7 @@ private fun FarmCardWithSparkline(
                 Icons.Default.ChevronRight,
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
-                tint = TextMuted.copy(alpha = 0.5f)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
             )
         }
     }
@@ -713,7 +710,7 @@ private fun EmptyFarmsCard() {
     Surface(
         modifier = Modifier.fillMaxWidth().shadow(4.dp, RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
-        color = CardWhite
+        color = MaterialTheme.colorScheme.surface
     ) {
         Column(
             modifier = Modifier.fillMaxWidth().padding(32.dp),
@@ -723,11 +720,11 @@ private fun EmptyFarmsCard() {
                 Icons.Default.Agriculture,
                 contentDescription = null,
                 modifier = Modifier.size(48.dp),
-                tint = TextMuted.copy(alpha = 0.4f)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
             )
             Spacer(modifier = Modifier.height(12.dp))
-            Text("No farms yet", fontWeight = FontWeight.Medium, color = TextMuted)
-            Text("Tap + to add your first farm", style = MaterialTheme.typography.bodySmall, color = TextMuted.copy(alpha = 0.6f))
+            Text("No farms yet", fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Tap + to add your first farm", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
         }
     }
 }

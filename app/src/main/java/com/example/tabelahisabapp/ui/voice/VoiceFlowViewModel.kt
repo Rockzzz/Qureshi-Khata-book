@@ -330,72 +330,44 @@ class VoiceFlowViewModel @Inject constructor(
      * Update daily balance when an expense is added via voice
      * Also saves to daily_expenses for detailed record tracking
      * Now also creates Daily Ledger entry for visibility in four-section view
-     * If customer name is provided, also creates customer transaction
+     * 
+     * IMPORTANT: Expenses do NOT create customer entries!
+     * Expenses only create:
+     * 1. DailyExpense record (for expense tracking)
+     * 2. DailyLedgerTransaction (for Rozana Hisab view with sourceType = EXPENSE)
      */
     private suspend fun updateDailyBalanceForExpense(today: Long, transaction: ParsedTransaction) {
         val existingBalance = dailyBalanceDao.getDailyBalanceByDate(today).first()
         val amount = transaction.amount
         
-        // 1. Save detailed expense record for the list
-        dailyExpenseDao.insertExpense(
+        // 1. Save detailed expense record for the expense list
+        // customerName here is actually the expense category/description (e.g., "Milk", "Petrol")
+        val expenseId = dailyExpenseDao.insertExpenseAndGetId(
             DailyExpense(
                 date = today,
-                category = transaction.customerName, // This is the expense name (Milk, Petrol, etc)
+                category = transaction.customerName, // This is the expense category (Milk, Petrol, etc)
                 amount = amount,
                 paymentMethod = transaction.paymentMethod,
                 createdAt = System.currentTimeMillis()
             )
         )
         
-        // 2. If customer name provided, find/create customer and save transaction to their ledger
-        var customerTxId: Int? = null
-        if (transaction.customerName.isNotBlank()) {
-            var customerResult = customerDao.getAllCustomersWithBalance().first()
-                .find { it.customer.name.equals(transaction.customerName, ignoreCase = true) }
-            
-            // Create customer if not found
-            if (customerResult == null) {
-                val newCustomer = com.example.tabelahisabapp.data.db.entity.Customer(
-                    name = transaction.customerName,
-                    phone = null,
-                    type = "CUSTOMER",
-                    createdAt = System.currentTimeMillis()
-                )
-                customerDao.insertCustomer(newCustomer)
-                customerResult = customerDao.getAllCustomersWithBalance().first()
-                    .find { it.customer.name.equals(transaction.customerName, ignoreCase = true) }
-            }
-            
-            if (customerResult != null) {
-                // Create customer transaction as CREDIT (we gave money/paid expense)
-                val customerTransaction = com.example.tabelahisabapp.data.db.entity.CustomerTransaction(
-                    customerId = customerResult.customer.id,
-                    type = "CREDIT",  // CREDIT = we paid = money went out
-                    amount = amount,
-                    date = today,
-                    note = "💰 Kharcha: ${transaction.originalText}",
-                    paymentMethod = transaction.paymentMethod,
-                    voiceNotePath = null,
-                    createdAt = System.currentTimeMillis()
-                )
-                transactionDao.insertOrUpdateTransaction(customerTransaction)
-                customerTxId = customerResult.customer.id  // Use customer ID for party linking
-            }
-        }
-        
-        // 3. Create Daily Ledger entry for four-section view (Daily Kharcha section)
+        // 2. Create Daily Ledger entry for four-section view (Daily Kharcha section)
+        // Link it to the expense via sourceType and sourceId for sync
         val mode = if (transaction.paymentMethod == "CASH") "CASH_OUT" else "BANK_OUT"
         val ledgerTransaction = com.example.tabelahisabapp.data.db.entity.DailyLedgerTransaction(
             date = today,
             mode = mode,
             amount = amount,
-            party = if (customerTxId != null) transaction.customerName else null,
-            note = if (customerTxId != null) "💰 Kharcha: ${transaction.originalText}" else transaction.customerName,
-            createdAt = System.currentTimeMillis()
+            party = transaction.customerName, // Show expense category as party
+            note = null,
+            createdAt = System.currentTimeMillis(),
+            sourceType = com.example.tabelahisabapp.data.db.entity.SourceType.EXPENSE,
+            sourceId = expenseId.toInt()
         )
         repository.insertOrUpdateLedgerTransaction(ledgerTransaction)
 
-        // 2. Update summary note and totals
+        // 3. Update summary note and totals
         val entryNote = "${transaction.customerName}: ₹${String.format("%.0f", amount)}"
         
         if (existingBalance != null) {

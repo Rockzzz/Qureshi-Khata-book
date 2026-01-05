@@ -1,4 +1,14 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Splash Screen Theme - Dark background to match launcher icon -->
+    <style name="Theme.TabelaHisabApp.SplashScreen" parent="Theme.SplashScreen">
+        <!-- Splash screen background color matching launcher icon background -->
+        <item name="windowSplashScreenBackground">#1E1E1E</item>
+        <!-- App icon to display on splash screen -->
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <!-- Post-splash theme -->
+        <item name="postSplashScreenTheme">@style/Theme.TabelaHisabApp</item>
+    </style>
+    
     <!-- Base application theme. -->
     <style name="Theme.TabelaHisabApp" parent="android:Theme.DeviceDefault.Light.NoActionBar">
         <!-- Customize your light theme here. -->

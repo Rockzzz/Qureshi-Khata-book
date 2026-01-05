@@ -65,6 +65,10 @@ interface CustomerTransactionDao {
     """)
     fun getTransactionsByDateWithCustomer(date: Long): Flow<List<com.example.tabelahisabapp.data.db.models.TransactionWithCustomer>>
     
+    // Get all transactions for a specific date (sync version for derived ledger)
+    @Query("SELECT * FROM customer_transactions WHERE date = :date ORDER BY createdAt ASC")
+    suspend fun getTransactionsByDateSync(date: Long): List<CustomerTransaction>
+    
     // Backup methods
     @Query("SELECT * FROM customer_transactions")
     suspend fun getAllTransactionsList(): List<CustomerTransaction>

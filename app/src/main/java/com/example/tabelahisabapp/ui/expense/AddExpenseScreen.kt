@@ -71,6 +71,7 @@ fun AddExpenseScreen(
 ) {
     // Combine DB categories with "Add New" option logic
     val categories by viewModel.categories.collectAsState()
+    val allExpenses by viewModel.expenses.collectAsState()
     
     var selectedCategory by remember { mutableStateOf<ExpenseCategoryConfig?>(null) }
     var amount by remember { mutableStateOf("") }
@@ -87,6 +88,30 @@ fun AddExpenseScreen(
     val isDark = AppTheme.isDark
     
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
+    
+    // Load existing expense data when editing
+    LaunchedEffect(editExpenseId, allExpenses, categories) {
+        if (editExpenseId != null && allExpenses.isNotEmpty() && categories.isNotEmpty()) {
+            val existingExpense = allExpenses.find { it.id == editExpenseId }
+            if (existingExpense != null) {
+                amount = existingExpense.amount.toInt().toString()
+                note = existingExpense.note ?: ""
+                selectedPaymentMethod = existingExpense.paymentMethod
+                if (lockedDate == null) {
+                    selectedDate = existingExpense.date
+                }
+                // Find matching category
+                val matchingCategory = categories.find { it.name == existingExpense.category }
+                if (matchingCategory != null) {
+                    selectedCategory = ExpenseCategoryConfig(
+                        name = matchingCategory.name,
+                        icon = getIconByName(matchingCategory.iconName ?: "Notes"),
+                        color = Color(android.graphics.Color.parseColor(matchingCategory.colorHex ?: "#71717A"))
+                    )
+                }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -325,13 +350,26 @@ fun AddExpenseScreen(
                 onClick = {
                     if (selectedCategory != null && amount.isNotBlank()) {
                         isLoading = true
-                        viewModel.saveExpense(
-                            category = selectedCategory!!.name,
-                            amount = amount.toDoubleOrNull() ?: 0.0,
-                            date = selectedDate,
-                            paymentMethod = selectedPaymentMethod,
-                            note = note.ifBlank { null }
-                        )
+                        if (editExpenseId != null) {
+                            // Update existing expense
+                            viewModel.updateExpense(
+                                expenseId = editExpenseId,
+                                category = selectedCategory!!.name,
+                                amount = amount.toDoubleOrNull() ?: 0.0,
+                                date = selectedDate,
+                                paymentMethod = selectedPaymentMethod,
+                                note = note.ifBlank { null }
+                            )
+                        } else {
+                            // Create new expense
+                            viewModel.saveExpense(
+                                category = selectedCategory!!.name,
+                                amount = amount.toDoubleOrNull() ?: 0.0,
+                                date = selectedDate,
+                                paymentMethod = selectedPaymentMethod,
+                                note = note.ifBlank { null }
+                            )
+                        }
                         onExpenseSaved()
                     }
                 },

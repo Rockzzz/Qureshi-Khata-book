@@ -223,23 +223,13 @@ fun HomeDashboardScreen(
                         Row(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // App Logo
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .background(Color.White, CircleShape)
-                                    .clip(CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Image(
-                                    painter = painterResource(id = R.drawable.app_logo),
-                                    contentDescription = "App Logo",
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape),
-                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                                )
-                            }
+                            // App Logo - Using launcher foreground (same as app drawer)
+                            Image(
+                                painter = painterResource(id = R.mipmap.ic_launcher_foreground),
+                                contentDescription = "App Logo",
+                                modifier = Modifier.size(82.dp),
+                                contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                            )
 
                             Spacer(modifier = Modifier.width(12.dp))
 
@@ -305,9 +295,9 @@ fun HomeDashboardScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp)
-                        .padding(top = 16.dp, bottom = 100.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                        .padding(horizontal = 12.dp)
+                        .padding(top = 12.dp, bottom = 100.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // ═══════════════════════════════════════════════════════════
                     // SECTION 1: Today's Closing Position (Most Important)
@@ -318,7 +308,7 @@ fun HomeDashboardScreen(
                             colors = listOf(Color(0xFF1E293B), Color(0xFF334155))
                         )
                     ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(modifier = Modifier.padding(16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -347,7 +337,7 @@ fun HomeDashboardScreen(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
 
                             // Cash | Bank | Total Row
                             Row(
@@ -480,7 +470,7 @@ fun HomeDashboardScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
 
                     // Row 2: Supplier cards
                     Row(
@@ -518,7 +508,7 @@ fun HomeDashboardScreen(
                     // SECTION 3: Money Distribution
                     // ═══════════════════════════════════════════════════════════
                     PremiumWhiteCard(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(modifier = Modifier.padding(16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -538,7 +528,7 @@ fun HomeDashboardScreen(
                                 )
                             }
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
 
                             // Calculate today's expenses from ledger transactions
                             val todayExpenses = remember(todayLedgerTransactions) {
@@ -556,7 +546,7 @@ fun HomeDashboardScreen(
                                 if (totalMoney > 0) (totalOutstanding / totalMoney * 100) else 0.0
 
                             // Distribution Bars
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 DistributionItem(
                                     label = "Cash",
                                     amount = todayCash,
@@ -597,7 +587,7 @@ fun HomeDashboardScreen(
                     // SECTION 4: Business Growth Graph
                     // ═══════════════════════════════════════════════════════════
                     PremiumWhiteCard(modifier = Modifier.fillMaxWidth()) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(modifier = Modifier.padding(16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -652,12 +642,12 @@ fun HomeDashboardScreen(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
 
                             // Day-wise Net Worth List (more informative than chart)
                             if (netWorthWithDates.isNotEmpty()) {
                                 Column(
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     val dateFormat = SimpleDateFormat("dd MMM", Locale.getDefault())
                                     netWorthWithDates.forEachIndexed { index, (date, amount) ->
@@ -675,7 +665,7 @@ fun HomeDashboardScreen(
                                                     ),
                                                     RoundedCornerShape(8.dp)
                                                 )
-                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                .padding(horizontal = 10.dp, vertical = 6.dp),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
@@ -717,7 +707,7 @@ fun HomeDashboardScreen(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(80.dp),
+                                        .height(60.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
@@ -738,7 +728,7 @@ fun HomeDashboardScreen(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = onNavigateToTrading
                     ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(modifier = Modifier.padding(16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -780,11 +770,11 @@ fun HomeDashboardScreen(
                                 )
                             }
 
-                            Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
 
                             Divider(color = BorderGray.copy(alpha = 0.5f))
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),

@@ -29,7 +29,12 @@ class CustomerLedgerViewModel @Inject constructor(
 
     fun deleteTransaction(transaction: com.example.tabelahisabapp.data.db.entity.CustomerTransaction) {
         viewModelScope.launch {
-            repository.deleteTransaction(transaction)
+            // Use sync method to delete both customer transaction AND linked daily ledger entry
+            repository.deleteCustomerTransactionWithSync(transaction.id, transaction.date)
+            
+            // Recalculate balances from the transaction date forward
+            repository.propagateBalancesForward(transaction.date)
+            
             // Also delete voice note file if exists
             transaction.voiceNotePath?.let { path ->
                 try {

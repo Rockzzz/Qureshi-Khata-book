@@ -63,7 +63,8 @@ fun AddTransactionScreen(
     val initialType = viewModel.initialType
     
     // Determine if this is a "gave" (red) or "got" (green) transaction
-    val isGaveTransaction = initialType == "CREDIT"
+    // This is now MUTABLE - will be updated from original transaction type when editing
+    var isGaveTransaction by remember { mutableStateOf(initialType == "CREDIT") }
     
     // Transaction ID for edit mode
     val transactionId = viewModel.transactionId
@@ -97,12 +98,17 @@ fun AddTransactionScreen(
         }
     }
 
-    // Load existing data if editing
+    // Load existing data if editing - PRESERVE ORIGINAL TRANSACTION DIRECTION
     LaunchedEffect(transactionId) {
         if (transactionId != null && transactionId != 0) {
             viewModel.getTransactionUiModel(transactionId)?.let { tx ->
                 amount = tx.amount.toInt().toString()
                 paymentMethod = tx.paymentMethod
+                selectedDate = tx.date
+                
+                // CRITICAL: Preserve original transaction direction
+                // DO NOT infer from balance - use the stored type
+                isGaveTransaction = (tx.type == "CREDIT")
             }
         }
     }

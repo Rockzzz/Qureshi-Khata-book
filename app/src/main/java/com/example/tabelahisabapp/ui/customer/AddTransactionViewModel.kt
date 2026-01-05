@@ -95,9 +95,7 @@ class AddTransactionViewModel @Inject constructor(
                 }
 
             if (transactionId != null) {
-                // Update Logic
-                // Note: Updating Type might require complex Ledger Sync update.
-                // For simplified impl, we assume basic field updates, or re-insertion logic needed in Repo.
+                // Update Logic - Sync changes to linked Daily Ledger Transaction
                 val existing = repository.getTransactionById(transactionId).first() ?: return@launch
                 
                 // Determine persistent type
@@ -109,16 +107,41 @@ class AddTransactionViewModel @Inject constructor(
                     }
                 } else type
 
-                val updated = existing.copy(
-                    type = persistentType,
-                    amount = amount,
-                    date = date,
-                    note = note,
-                    paymentMethod = paymentMethod,
-                    voiceNotePath = voiceNotePath ?: existing.voiceNotePath
+                // Check if date changed - need to handle ledger entry move
+                val dateChanged = existing.date != date
+                val oldDate = existing.date
+
+                // Use sync method to update both CustomerTransaction and linked DailyLedgerTransaction
+                repository.updateCustomerTransactionWithSync(
+                    transactionId = transactionId,
+                    newAmount = amount,
+                    newType = persistentType,
+                    newPaymentMethod = paymentMethod,
+                    newNote = note,
+                    date = date
                 )
-                repository.insertOrUpdateTransaction(updated)
-                // TODO: Sync changes to Linked Ledger Transaction
+                
+                // If date changed, we need to:
+                // 1. Delete the ledger entry from old date
+                // 2. Create new ledger entry on new date
+                // 3. Recalculate balances for both dates
+                if (dateChanged) {
+                    repository.moveLedgerEntryToNewDate(
+                        transactionId = transactionId,
+                        oldDate = oldDate,
+                        newDate = date,
+                        amount = amount,
+                        paymentMethod = paymentMethod,
+                        type = persistentType,
+                        party = entity.name,
+                        note = note,
+                        isSupplier = transactionContext == "SUPPLIER"
+                    )
+                    // Recalculate balances for old date (will propagate forward)
+                    repository.propagateBalancesForward(oldDate)
+                }
+                // Always recalculate balances for the transaction date
+                repository.propagateBalancesForward(date)
                 
             } else {
                 // Create New Logic

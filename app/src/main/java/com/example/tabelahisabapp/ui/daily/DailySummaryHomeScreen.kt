@@ -38,16 +38,13 @@ import java.util.*
 // ANTIGRAVITY UI - DAILY KA HISAB SCREEN
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Color System
+// Color System - Using accent colors (theme-independent)
 private val GradientPurple1 = Color(0xFF6366F1)
 private val GradientPurple2 = Color(0xFF8B5CF6)
 private val GradientPurple3 = Color(0xFFA78BFA)
 private val ProfitGreen = Color(0xFF10B981)
 private val LossRed = Color(0xFFEF4444)
-private val CardWhite = Color.White
-private val TextDark = Color(0xFF1E293B)
-private val TextMuted = Color(0xFF64748B)
-private val BgGray = Color(0xFFF8FAFC)
+// Note: Card and text colors now use MaterialTheme.colorScheme for dark mode support
 
 // Unified model for display
 data class LedgerItem(
@@ -198,7 +195,7 @@ fun DailySummaryHomeScreen(
                                             Text(
                                                 text = "$todayEntryCount entries • Closing: ₹${String.format("%,.0f", (todayBalance?.closingCash ?: 0.0) + (todayBalance?.closingBank ?: 0.0))}",
                                                 style = MaterialTheme.typography.bodyMedium,
-                                                color = TextDark.copy(alpha = 0.7f)
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                                             )
                                         } else {
                                             Text(
@@ -213,7 +210,7 @@ fun DailySummaryHomeScreen(
                                             Text(
                                                 text = "Tap to start today's hisab",
                                                 style = MaterialTheme.typography.bodyMedium,
-                                                color = TextDark.copy(alpha = 0.6f)
+                                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                             )
                                         }
                                     }
@@ -225,7 +222,7 @@ fun DailySummaryHomeScreen(
                                         modifier = Modifier
                                             .align(Alignment.CenterEnd)
                                             .size(28.dp),
-                                        tint = TextDark.copy(alpha = 0.4f)
+                                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                                     )
                                 }
                             }
@@ -249,7 +246,7 @@ fun DailySummaryHomeScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(BgGray)
+                                .background(MaterialTheme.colorScheme.background)
                                 .padding(horizontal = 20.dp, vertical = 6.dp)
                         ) {
                             AnimatedVisibility(
@@ -274,7 +271,7 @@ fun DailySummaryHomeScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(BgGray)
+                                .background(MaterialTheme.colorScheme.background)
                                 .padding(20.dp)
                         ) {
                             EmptyStateCard()
@@ -288,7 +285,7 @@ fun DailySummaryHomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp)
-                            .background(BgGray)
+                            .background(MaterialTheme.colorScheme.background)
                     )
                 }
             }
@@ -306,7 +303,7 @@ fun DailySummaryHomeScreen(
                 showContextMenu = false
                 selectedEntry = null 
             },
-            containerColor = CardWhite,
+            containerColor = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
         ) {
             Column(
@@ -318,7 +315,7 @@ fun DailySummaryHomeScreen(
                     text = dateStr,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = TextDark
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(20.dp))
                 
@@ -403,7 +400,7 @@ private fun DayCard(
                 onLongClick = onLongPress
             ),
         shape = RoundedCornerShape(16.dp),
-        color = CardWhite
+        color = MaterialTheme.colorScheme.surface
     ) {
         Row(
             modifier = Modifier
@@ -417,7 +414,7 @@ private fun DayCard(
                     text = dateStr,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = TextDark
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 
                 Spacer(modifier = Modifier.height(4.dp))
@@ -435,7 +432,7 @@ private fun DayCard(
                 Text(
                     text = "Closing: ₹${String.format("%,.0f", closingTotal)}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = TextMuted
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             
@@ -450,7 +447,7 @@ private fun DayCard(
                 Text(
                     text = "Net",
                     style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             
@@ -459,7 +456,7 @@ private fun DayCard(
             Icon(
                 Icons.Default.ChevronRight,
                 contentDescription = null,
-                tint = TextMuted.copy(alpha = 0.5f),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -473,7 +470,7 @@ private fun EmptyStateCard() {
             .fillMaxWidth()
             .shadow(4.dp, RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
-        color = CardWhite
+        color = MaterialTheme.colorScheme.surface
     ) {
         Column(
             modifier = Modifier
@@ -485,19 +482,19 @@ private fun EmptyStateCard() {
                 Icons.Default.EventNote,
                 contentDescription = null,
                 modifier = Modifier.size(48.dp),
-                tint = TextMuted.copy(alpha = 0.4f)
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = "No entries yet",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Medium,
-                color = TextMuted
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 text = "Start your daily hisab today",
                 style = MaterialTheme.typography.bodySmall,
-                color = TextMuted.copy(alpha = 0.6f)
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
             )
         }
     }

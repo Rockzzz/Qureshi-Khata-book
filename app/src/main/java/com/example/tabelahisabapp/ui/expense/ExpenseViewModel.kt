@@ -163,20 +163,15 @@ class ExpenseViewModel @Inject constructor(
                 
                 val normalizedDate = normalizeDateToMidnight(date)
                 
-                val expense = DailyExpense(
-                    id = expenseId,
-                    date = normalizedDate,
-                    category = category,
-                    amount = amount,
-                    paymentMethod = paymentMethod,
-                    note = note,
-                    createdAt = System.currentTimeMillis()
+                // Use updateExpenseWithSync to properly update both expense and ledger
+                repository.updateExpenseWithSync(
+                    expenseId = expenseId,
+                    newAmount = amount,
+                    newCategory = category,
+                    newNote = note,
+                    newPaymentMethod = paymentMethod,
+                    date = normalizedDate
                 )
-                
-                repository.insertExpense(expense)
-                
-                // Update corresponding ledger entry
-                // TODO: Find and update linked ledger entry by sourceType and sourceId
                 
                 _saveSuccess.value = true
             } catch (e: Exception) {

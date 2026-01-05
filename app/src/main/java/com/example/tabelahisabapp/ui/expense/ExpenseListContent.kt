@@ -87,11 +87,11 @@ fun ExpenseListContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(BackgroundGray)
+                .background(MaterialTheme.colorScheme.background)
         ) {
             // Header Summary Card (Khata Style)
             Surface(
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 4.dp,
                 modifier = Modifier.padding(bottom = 8.dp)
             ) {
@@ -159,7 +159,7 @@ fun ExpenseListContent(
                     when (item) {
                         is ExpenseListItem.DateHeader -> {
                             Surface(
-                                color = BackgroundGray,
+                                color = MaterialTheme.colorScheme.background,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                  Box(
@@ -168,8 +168,8 @@ fun ExpenseListContent(
                                  ) {
                                      Surface(
                                          shape = RoundedCornerShape(12.dp),
-                                         color = Color.White,
-                                         border = androidx.compose.foundation.BorderStroke(1.dp, BorderGray)
+                                         color = MaterialTheme.colorScheme.surface,
+                                         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                                      ) {
                                          Text(
                                              text = item.date,
@@ -192,7 +192,7 @@ fun ExpenseListContent(
                             val color = try { Color(android.graphics.Color.parseColor(colorHex)) } catch(e:Exception) { Color.Gray }
                             
                             Surface(
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.surface,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 4.dp)
@@ -258,7 +258,7 @@ fun ExpenseListContent(
                             if (showMenu) {
                                 ModalBottomSheet(
                                     onDismissRequest = { showMenu = false },
-                                    containerColor = Color.White
+                                    containerColor = MaterialTheme.colorScheme.surface
                                 ) {
                                     Column(
                                         modifier = Modifier

@@ -91,6 +91,106 @@ class MainRepository @Inject constructor(
     suspend fun getLedgerTotalsForDate(date: Long) = dailyLedgerTransactionDao.getTotalsForDate(date)
     fun getAllLedgerDates() = dailyLedgerTransactionDao.getAllDistinctDates()
     
+    // ========== DERIVED DAILY LEDGER (SINGLE SOURCE OF TRUTH) ==========
+    
+    /**
+     * Get all transactions for a date derived from ALL sources
+     * This is the SINGLE SOURCE OF TRUTH for Daily Ledger
+     * 
+     * Sources:
+     * - CustomerTransaction (includes both customers and suppliers)
+     * - DailyExpense
+     * 
+     * NOTE: PURCHASE transactions are included for visibility but don't affect cash/bank
+     */
+    suspend fun getDerivedDailyLedgerForDate(date: Long): List<DerivedLedgerEntry> {
+        val normalizedDate = normalizeDateToMidnight(date)
+        
+        // 1. Get customer/supplier transactions for this date
+        val customerTx = customerTransactionDao.getTransactionsByDateSync(normalizedDate)
+        
+        // 2. Get expenses for this date
+        val expenses = dailyExpenseDao.getExpensesByDateSync(normalizedDate)
+        
+        // 3. Convert to unified ledger entries
+        return buildList {
+            // Customer/Supplier transactions
+            for (tx in customerTx) {
+                val customer = customerDao.getCustomerByIdSync(tx.customerId)
+                val isSupplier = customer?.type == "SELLER" || customer?.type == "BOTH"
+                
+                // Determine ledger mode based on transaction type and payment method
+                val mode = determineLedgerMode(
+                    type = tx.type,
+                    paymentMethod = tx.paymentMethod,
+                    isSupplier = isSupplier
+                )
+                
+                // Determine category for display grouping
+                val category = when {
+                    tx.type == "PURCHASE" -> DerivedLedgerCategory.PURCHASE
+                    isSupplier && tx.type == "CREDIT" -> DerivedLedgerCategory.SUPPLIER_PAYMENT
+                    tx.type == "DEBIT" -> DerivedLedgerCategory.CASH_IN
+                    tx.type == "CREDIT" -> DerivedLedgerCategory.CASH_OUT
+                    else -> DerivedLedgerCategory.CASH_OUT
+                }
+                
+                add(DerivedLedgerEntry(
+                    id = tx.id,
+                    sourceType = if (isSupplier) SourceType.SUPPLIER else SourceType.CUSTOMER,
+                    sourceId = tx.id,
+                    date = tx.date,
+                    amount = tx.amount,
+                    party = customer?.name ?: "Unknown",
+                    note = tx.note,
+                    mode = mode,
+                    category = category,
+                    paymentMethod = tx.paymentMethod,
+                    createdAt = tx.createdAt
+                ))
+            }
+            
+            // Expenses
+            for (expense in expenses) {
+                val mode = if (expense.paymentMethod == "CASH") LedgerMode.CASH_OUT else LedgerMode.BANK_OUT
+                
+                add(DerivedLedgerEntry(
+                    id = expense.id,
+                    sourceType = SourceType.EXPENSE,
+                    sourceId = expense.id,
+                    date = expense.date,
+                    amount = expense.amount,
+                    party = expense.category,
+                    note = expense.note,
+                    mode = mode,
+                    category = DerivedLedgerCategory.EXPENSE,
+                    paymentMethod = expense.paymentMethod,
+                    createdAt = expense.createdAt
+                ))
+            }
+        }.sortedBy { it.createdAt }
+    }
+    
+    /**
+     * Determine the ledger mode based on transaction type and payment method
+     */
+    private fun determineLedgerMode(type: String, paymentMethod: String, isSupplier: Boolean): String {
+        return when {
+            // PURCHASE transactions (supplier goods received) - special mode for record only
+            type == "PURCHASE" || type == "DEBIT" && isSupplier -> "PURCHASE"
+            
+            // Money received (DEBIT for customer = they paid us)
+            type == "DEBIT" && paymentMethod == "CASH" -> LedgerMode.CASH_IN
+            type == "DEBIT" && paymentMethod == "BANK" -> LedgerMode.BANK_IN
+            
+            // Money given (CREDIT = we paid them / PAYMENT = supplier payment)
+            (type == "CREDIT" || type == "PAYMENT") && paymentMethod == "CASH" -> LedgerMode.CASH_OUT
+            (type == "CREDIT" || type == "PAYMENT") && paymentMethod == "BANK" -> LedgerMode.BANK_OUT
+            
+            else -> LedgerMode.CASH_OUT
+        }
+    }
+    
     /**
      * Save customer transaction and automatically create corresponding daily ledger entry
      * Handles: CREDIT (payment given) and DEBIT (money received)
@@ -206,20 +306,57 @@ class MainRepository @Inject constructor(
     }
     
     /**
-     * Delete a Daily Ledger transaction and also delete linked Customer Transaction
+     * Delete a Daily Ledger transaction and also delete linked Customer/Supplier Transaction
      * This ensures two-way sync when deleting from Rozana Hisab
+     * 
+     * Handles three source types:
+     * - customer: Delete linked CustomerTransaction via customerTransactionId
+     * - supplier: Delete linked CustomerTransaction (supplier uses same table) via customerTransactionId or sourceId
+     * - expense: Delete linked DailyExpense via sourceId
      */
     suspend fun deleteLedgerTransactionWithSync(transaction: DailyLedgerTransaction) {
-        // 1. Delete linked customer transaction if exists
-        val customerTxId = transaction.customerTransactionId
-        if (customerTxId != null) {
-            val customerTx = customerTransactionDao.getTransactionByIdSync(customerTxId)
-            if (customerTx != null) {
-                deleteTransaction(customerTx)
+        // Handle based on sourceType
+        when (transaction.sourceType) {
+            SourceType.SUPPLIER -> {
+                // Supplier transactions link via customerTransactionId (supplier uses CustomerTransaction table)
+                val customerTxId = transaction.customerTransactionId
+                if (customerTxId != null) {
+                    val customerTx = customerTransactionDao.getTransactionByIdSync(customerTxId)
+                    if (customerTx != null) {
+                        deleteTransaction(customerTx)
+                    }
+                }
+            }
+            SourceType.CUSTOMER -> {
+                // Customer transactions link via customerTransactionId
+                val customerTxId = transaction.customerTransactionId
+                if (customerTxId != null) {
+                    val customerTx = customerTransactionDao.getTransactionByIdSync(customerTxId)
+                    if (customerTx != null) {
+                        deleteTransaction(customerTx)
+                    }
+                }
+            }
+            SourceType.EXPENSE -> {
+                // Expense transactions link via sourceId to DailyExpense
+                val expenseId = transaction.sourceId
+                if (expenseId != null) {
+                    dailyExpenseDao.deleteExpenseById(expenseId)
+                }
+            }
+            else -> {
+                // Fallback: Try customerTransactionId for backward compatibility
+                val customerTxId = transaction.customerTransactionId
+                if (customerTxId != null) {
+                    val customerTx = customerTransactionDao.getTransactionByIdSync(customerTxId)
+                    if (customerTx != null) {
+                        deleteTransaction(customerTx)
+                    }
+                }
             }
         }
         
-        // 2. Delete the ledger transaction
+        // Finally, delete the ledger transaction itself
         deleteLedgerTransaction(transaction)
     }
     
@@ -414,10 +551,11 @@ class MainRepository @Inject constructor(
     
     /**
      * Delete customer transaction and sync to daily ledger
+     * Uses customerTransactionId to find the linked daily ledger entry
      */
     suspend fun deleteCustomerTransactionWithSync(transactionId: Int, date: Long) {
-        // 1. Find and delete linked daily ledger entry first
-        val linkedEntry = dailyLedgerTransactionDao.getBySourceId("customer", transactionId)
+        // 1. Find and delete linked daily ledger entry first (linked via customerTransactionId)
+        val linkedEntry = dailyLedgerTransactionDao.getByCustomerTransactionId(transactionId)
         if (linkedEntry != null) {
             dailyLedgerTransactionDao.deleteTransaction(linkedEntry)
         }
@@ -426,6 +564,101 @@ class MainRepository @Inject constructor(
         val transaction = customerTransactionDao.getTransactionByIdSync(transactionId)
         if (transaction != null) {
             customerTransactionDao.deleteTransaction(transaction)
+        }
+    }
+    
+    /**
+     * Delete supplier transaction and sync to daily ledger
+     * Suppliers use the same CustomerTransaction table, linked via customerTransactionId
+     */
+    suspend fun deleteSupplierTransactionWithSync(transactionId: Int, date: Long) {
+        // 1. Find and delete linked daily ledger entry first (linked via customerTransactionId)
+        val linkedEntry = dailyLedgerTransactionDao.getByCustomerTransactionId(transactionId)
+        if (linkedEntry != null) {
+            dailyLedgerTransactionDao.deleteTransaction(linkedEntry)
+        }
+        
+        // 2. Delete supplier transaction (stored in CustomerTransaction table)
+        val transaction = customerTransactionDao.getTransactionByIdSync(transactionId)
+        if (transaction != null) {
+            customerTransactionDao.deleteTransaction(transaction)
+        }
+    }
+    
+    /**
+     * Move a ledger entry to a new date when transaction date is changed
+     * This handles deleting from old date and creating on new date with proper mode
+     */
+    suspend fun moveLedgerEntryToNewDate(
+        transactionId: Int,
+        oldDate: Long,
+        newDate: Long,
+        amount: Double,
+        paymentMethod: String,
+        type: String,
+        party: String,
+        note: String?,
+        isSupplier: Boolean
+    ) {
+        val normalizedOldDate = normalizeDateToMidnight(oldDate)
+        val normalizedNewDate = normalizeDateToMidnight(newDate)
+        
+        // 1. Delete old ledger entry
+        val oldEntry = dailyLedgerTransactionDao.getByCustomerTransactionId(transactionId)
+        if (oldEntry != null) {
+            dailyLedgerTransactionDao.deleteTransaction(oldEntry)
+        }
+        
+        // Don't create new entry if this is a supplier PURCHASE - they use "PURCHASE" mode
+        // which doesn't affect balances but still shows in ledger
+        if (type == "PURCHASE") {
+            // Create PURCHASE mode entry (record only, no cash impact)
+            val newEntry = DailyLedgerTransaction(
+                date = normalizedNewDate,
+                mode = "PURCHASE",
+                amount = amount,
+                party = party,
+                note = note ?: "Khareedari - $party",
+                createdAt = System.currentTimeMillis(),
+                customerTransactionId = transactionId,
+                sourceType = SourceType.SUPPLIER,
+                sourceId = transactionId
+            )
+            dailyLedgerTransactionDao.insertOrUpdateTransaction(newEntry)
+        } else {
+            // 2. Determine new ledger mode based on type and payment method
+            val mode = when {
+                type == "DEBIT" && paymentMethod == "CASH" -> "CASH_IN"
+                type == "DEBIT" && paymentMethod == "BANK" -> "BANK_IN"
+                type == "CREDIT" && paymentMethod == "CASH" -> "CASH_OUT"
+                type == "CREDIT" && paymentMethod == "BANK" -> "BANK_OUT"
+                type == "PAYMENT" && paymentMethod == "CASH" -> "CASH_OUT"
+                type == "PAYMENT" && paymentMethod == "BANK" -> "BANK_OUT"
+                else -> "CASH_OUT"
+            }
+            
+            val sourceType = if (isSupplier) SourceType.SUPPLIER else SourceType.CUSTOMER
+            
+            // 3. Create new ledger entry on new date
+            val newEntry = DailyLedgerTransaction(
+                date = normalizedNewDate,
+                mode = mode,
+                amount = amount,
+                party = party,
+                note = note,
+                createdAt = System.currentTimeMillis(),
+                customerTransactionId = transactionId,
+                sourceType = sourceType,
+                sourceId = transactionId
+            )
+            dailyLedgerTransactionDao.insertOrUpdateTransaction(newEntry)
+        }
+        
+        // 4. Update the customer transaction date as well
+        val transaction = customerTransactionDao.getTransactionByIdSync(transactionId)
+        if (transaction != null) {
+            val updated = transaction.copy(date = normalizedNewDate)
+            customerTransactionDao.update(updated)
         }
     }
     

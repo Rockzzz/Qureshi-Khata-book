@@ -60,6 +60,9 @@ interface DailyLedgerTransactionDao {
     @Query("SELECT * FROM daily_ledger_transactions WHERE sourceType = :sourceType AND sourceId = :sourceId LIMIT 1")
     suspend fun getBySourceId(sourceType: String, sourceId: Int): DailyLedgerTransaction?
     
+    @Query("SELECT * FROM daily_ledger_transactions WHERE customerTransactionId = :transactionId LIMIT 1")
+    suspend fun getByCustomerTransactionId(transactionId: Int): DailyLedgerTransaction?
+    
     @Query("SELECT DISTINCT date FROM daily_ledger_transactions ORDER BY date DESC")
     fun getAllDistinctDates(): Flow<List<Long>>
     

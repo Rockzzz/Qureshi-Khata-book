@@ -5,6 +5,8 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -240,7 +242,7 @@ fun DailyEntryScreen(
                             .fillMaxWidth()
                             .shadow(8.dp, RoundedCornerShape(16.dp))
                             .clickable { showEditOpeningDialog = true },
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Column(modifier = Modifier.padding(20.dp)) {
@@ -433,7 +435,7 @@ fun DailyEntryScreen(
                             .fillMaxWidth()
                             .shadow(8.dp, RoundedCornerShape(16.dp)),
                         shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White)
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                     ) {
                         Column(modifier = Modifier.padding(20.dp)) {
                             // Header
@@ -660,6 +662,7 @@ fun DailyEntryScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun PremiumLedgerSection(
     title: String,
@@ -670,16 +673,20 @@ fun PremiumLedgerSection(
     onToggle: () -> Unit,
     transactions: List<DailyLedgerTransaction>,
     onAddClick: () -> Unit = {},  // Keep for compatibility but won't be used
-    onEditClick: (DailyLedgerTransaction) -> Unit = {},  // Keep for compatibility but won't be used
-    onDeleteClick: (DailyLedgerTransaction) -> Unit = {},  // Keep for compatibility but won't be used
+    onEditClick: (DailyLedgerTransaction) -> Unit = {},
+    onDeleteClick: (DailyLedgerTransaction) -> Unit = {},
     addButtonText: String = ""
 ) {
+    // State for bottom sheet
+    var selectedTransaction by remember { mutableStateOf<DailyLedgerTransaction?>(null) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .shadow(6.dp, RoundedCornerShape(16.dp)),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column {
             // Header
@@ -730,7 +737,11 @@ fun PremiumLedgerSection(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
+                                    .padding(vertical = 4.dp)
+                                    .combinedClickable(
+                                        onClick = { },
+                                        onLongClick = { selectedTransaction = tx }
+                                    ),
                                 colors = CardDefaults.cardColors(containerColor = Color(0xFFF9FAFB)),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
@@ -764,16 +775,187 @@ fun PremiumLedgerSection(
                                         fontSize = 15.sp,
                                         color = TextPrimary
                                     )
-                                    // Read-only indicator (no edit/delete buttons)
                                 }
                             }
                         }
                     }
-                    
-                    // Removed Add Button - entries come from Customer/Supplier/Expense screens
                 }
             }
         }
+    }
+    
+    // Bottom Sheet for Edit/Delete options
+    if (selectedTransaction != null) {
+        ModalBottomSheet(
+            onDismissRequest = { selectedTransaction = null },
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp)
+            ) {
+                // Transaction info header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(headerColor.copy(alpha = 0.1f), RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Receipt,
+                            contentDescription = null,
+                            tint = headerColor,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            selectedTransaction!!.party ?: selectedTransaction!!.note ?: "Entry",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = TextPrimary
+                        )
+                        Text(
+                            "₹${String.format("%,.0f", selectedTransaction!!.amount)}",
+                            fontSize = 14.sp,
+                            color = headerColor,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+                
+                Divider(color = Color(0xFFE5E7EB))
+                
+                // Edit Option
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            selectedTransaction?.let { tx ->
+                                onEditClick(tx)
+                                selectedTransaction = null
+                            }
+                        }
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Edit",
+                        tint = Color(0xFF3B82F6)
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Text(
+                        "✏️ Edit Entry",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TextPrimary
+                    )
+                }
+                
+                // Delete Option
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showDeleteConfirmDialog = true
+                        }
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        tint = Color(0xFFEF4444)
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Text(
+                        "🗑️ Delete Entry",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFFEF4444)
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // Info text
+                Text(
+                    "⚠️ Delete karne se Customer/Supplier ledger se bhi entry hat jayegi",
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+            }
+        }
+    }
+    
+    // Delete Confirmation Dialog
+    if (showDeleteConfirmDialog && selectedTransaction != null) {
+        AlertDialog(
+            onDismissRequest = { 
+                showDeleteConfirmDialog = false
+                selectedTransaction = null
+            },
+            icon = { 
+                Icon(
+                    Icons.Default.Delete, 
+                    contentDescription = null, 
+                    tint = Color(0xFFEF4444)
+                ) 
+            },
+            title = { 
+                Text("Entry Delete Karein?", fontWeight = FontWeight.Bold) 
+            },
+            text = { 
+                Column {
+                    Text(
+                        "${selectedTransaction!!.party ?: selectedTransaction!!.note ?: "Entry"} - ₹${String.format("%,.0f", selectedTransaction!!.amount)}",
+                        fontWeight = FontWeight.Medium
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Yeh entry Daily Ledger aur Customer/Supplier Ledger dono se delete ho jayegi.",
+                        color = TextSecondary,
+                        fontSize = 14.sp
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        selectedTransaction?.let { tx ->
+                            onDeleteClick(tx)
+                        }
+                        showDeleteConfirmDialog = false
+                        selectedTransaction = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFEF4444)
+                    )
+                ) {
+                    Text("Delete Karein")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { 
+                        showDeleteConfirmDialog = false
+                        selectedTransaction = null
+                    }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

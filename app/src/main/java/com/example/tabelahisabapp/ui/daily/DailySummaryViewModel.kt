@@ -128,6 +128,9 @@ class DailySummaryViewModel @Inject constructor(
     // New Daily Ledger methods
     fun getLedgerTransactionsByDate(date: Long) = repository.getLedgerTransactionsByDate(normalizeDateToMidnight(date))
     
+    // Get DERIVED ledger entries (single source of truth from CustomerTransaction + DailyExpense)
+    suspend fun getDerivedLedgerForDate(date: Long) = repository.getDerivedDailyLedgerForDate(normalizeDateToMidnight(date))
+    
     suspend fun checkLedgerExistsForDate(date: Long): Boolean {
         val normalizedDate = normalizeDateToMidnight(date)
         val balance = repository.getDailyBalanceByDate(normalizedDate).first()

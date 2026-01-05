@@ -1,7 +1,9 @@
 package com.example.tabelahisabapp.ui.supplier
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -318,6 +320,7 @@ fun SupplierLedgerScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun SupplierTransactionRow(
     transaction: CustomerTransaction,
@@ -327,13 +330,17 @@ fun SupplierTransactionRow(
     onDelete: () -> Unit
 ) {
     val hasVoiceNote = transaction.voiceNotePath?.let { File(it).exists() } ?: false
+    var showMenu by remember { mutableStateOf(false) }
     
     // Background color
     Surface(
         color = Color.White,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onEdit) 
+            .combinedClickable(
+                onClick = { },
+                onLongClick = { showMenu = true }
+            )
             .padding(horizontal = 16.dp, vertical = 8.dp),
          shape = RoundedCornerShape(8.dp),
          shadowElevation = 1.dp
@@ -419,6 +426,99 @@ fun SupplierTransactionRow(
                      style = MaterialTheme.typography.bodySmall,
                      color = if (runningBalance > 0) DangerRed else SuccessGreen
                  )
+            }
+        }
+    }
+    
+    // Bottom Sheet for Edit/Delete options
+    if (showMenu) {
+        ModalBottomSheet(
+            onDismissRequest = { showMenu = false },
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp)
+            ) {
+                // Transaction info header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Receipt,
+                        contentDescription = null,
+                        tint = Purple600,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "₹${String.format("%.0f", transaction.amount)}",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        )
+                        Text(
+                            text = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(transaction.date)),
+                            color = TextSecondary,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+                
+                Divider(modifier = Modifier.padding(vertical = 8.dp))
+                
+                // Edit option
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showMenu = false
+                            onEdit()
+                        }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "Edit",
+                        tint = InfoBlue,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "Edit Transaction",
+                        fontSize = 16.sp
+                    )
+                }
+                
+                // Delete option
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showMenu = false
+                            onDelete()
+                        }
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = "Delete",
+                        tint = DangerRed,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "Delete Transaction",
+                        fontSize = 16.sp,
+                        color = DangerRed
+                    )
+                }
             }
         }
     }

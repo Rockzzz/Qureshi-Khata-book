@@ -27,6 +27,9 @@ interface CustomerDao {
 
     @Query("SELECT * FROM customers WHERE name = :name LIMIT 1")
     suspend fun getCustomerByName(name: String): Customer?
+    
+    @Query("SELECT * FROM customers WHERE id = :customerId")
+    suspend fun getCustomerByIdSync(customerId: Int): Customer?
 
     @Query("""
         SELECT c.*, (
