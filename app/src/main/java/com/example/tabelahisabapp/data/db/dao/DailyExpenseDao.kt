@@ -39,8 +39,9 @@ interface DailyExpenseDao {
     suspend fun deleteExpensesForDate(date: Long)
     
     // Get all expenses for a specific date (sync version for derived ledger)
-    @Query("SELECT * FROM daily_expenses WHERE date = :date ORDER BY createdAt ASC")
-    suspend fun getExpensesByDateSync(date: Long): List<DailyExpense>
+    // Uses date RANGE to catch expenses saved with any time on that day
+    @Query("SELECT * FROM daily_expenses WHERE date >= :startOfDay AND date < :endOfDay ORDER BY createdAt ASC")
+    suspend fun getExpensesByDateRangeSync(startOfDay: Long, endOfDay: Long): List<DailyExpense>
     
     // Backup methods
     @Query("SELECT * FROM daily_expenses")

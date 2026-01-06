@@ -136,7 +136,15 @@ fun DailyEntryScreen(
     }
     
     val existingEntry by viewModel.getBalanceByDate(normalizedDate).collectAsState(initial = null)
-    val existingTransactions by viewModel.getLedgerTransactionsByDate(normalizedDate).collectAsState(initial = emptyList())
+    
+    // DERIVED LEDGER: Fetch transactions from source (CustomerTransaction + DailyExpense)
+    // This is the SINGLE SOURCE OF TRUTH - no more sync issues!
+    var derivedTransactions by remember { mutableStateOf<List<com.example.tabelahisabapp.data.repository.DerivedLedgerEntry>>(emptyList()) }
+    
+    LaunchedEffect(normalizedDate) {
+        // Fetch derived ledger entries whenever date changes
+        derivedTransactions = viewModel.getDerivedLedgerForDate(normalizedDate)
+    }
     
     LaunchedEffect(existingEntry) {
         existingEntry?.let {
@@ -145,14 +153,29 @@ fun DailyEntryScreen(
         }
     }
     
-    var transactions by remember { mutableStateOf<List<DailyLedgerTransaction>>(emptyList()) }
-    
-    LaunchedEffect(existingTransactions) {
-        transactions = existingTransactions
+    // Convert derived entries to DailyLedgerTransaction for display compatibility
+    val transactions: List<DailyLedgerTransaction> = remember(derivedTransactions) {
+        derivedTransactions.map { entry ->
+            DailyLedgerTransaction(
+                id = entry.id,
+                date = entry.date,
+                mode = entry.mode,
+                amount = entry.amount,
+                party = entry.party,
+                note = entry.note,
+                createdAt = entry.createdAt,
+                customerTransactionId = if (entry.sourceType != "expense") entry.sourceId else null,
+                sourceType = entry.sourceType,
+                sourceId = entry.sourceId
+            )
+        }
     }
     
+    // Categorize transactions for display in sections
     val categorizedTransactions = remember(transactions) {
-        transactions.groupBy { tx -> categorizeTransaction(tx.mode, tx.amount, tx.party, tx.note, tx.sourceType) }
+        transactions.groupBy { tx -> 
+            categorizeTransaction(tx.mode, tx.amount, tx.party, tx.note, tx.sourceType)
+        }
     }
     
     val moneyReceivedTotal = categorizedTransactions[TransactionCategory.MONEY_RECEIVED]?.sumOf { it.amount } ?: 0.0
@@ -315,7 +338,8 @@ fun DailyEntryScreen(
                         onDeleteClick = { tx ->
                             scope.launch {
                                 viewModel.deleteLedgerTransaction(tx)
-                                transactions = transactions.filter { it.id != tx.id }
+                                // Refresh derived transactions from source
+                                derivedTransactions = viewModel.getDerivedLedgerForDate(normalizedDate)
                             }
                         },
                         addButtonText = "+ Entry Daalo"
@@ -345,7 +369,8 @@ fun DailyEntryScreen(
                         onDeleteClick = { tx ->
                             scope.launch {
                                 viewModel.deleteLedgerTransaction(tx)
-                                transactions = transactions.filter { it.id != tx.id }
+                                // Refresh derived transactions from source
+                                derivedTransactions = viewModel.getDerivedLedgerForDate(normalizedDate)
                             }
                         },
                         addButtonText = "+ Kharcha Daalo"
@@ -375,7 +400,8 @@ fun DailyEntryScreen(
                         onDeleteClick = { tx ->
                             scope.launch {
                                 viewModel.deleteLedgerTransaction(tx)
-                                transactions = transactions.filter { it.id != tx.id }
+                                // Refresh derived transactions from source
+                                derivedTransactions = viewModel.getDerivedLedgerForDate(normalizedDate)
                             }
                         },
                         addButtonText = "+ Khareedari Likho"
@@ -405,7 +431,8 @@ fun DailyEntryScreen(
                         onDeleteClick = { tx ->
                             scope.launch {
                                 viewModel.deleteLedgerTransaction(tx)
-                                transactions = transactions.filter { it.id != tx.id }
+                                // Refresh derived transactions from source
+                                derivedTransactions = viewModel.getDerivedLedgerForDate(normalizedDate)
                             }
                         },
                         addButtonText = "+ Payment Daalo"
@@ -637,21 +664,16 @@ fun DailyEntryScreen(
                                 )
                             )
                         }
-                        // Update local list
-                        transactions = transactions.map {
-                            if (it.id == editingTransaction!!.id) newTransaction.copy(
-                                id = editingTransaction!!.id,
-                                date = viewModel.normalizeDateToMidnight(selectedDate),
-                                customerTransactionId = editingTransaction!!.customerTransactionId
-                            )
-                            else it
-                        }
+                        // Refresh derived transactions from source
+                        derivedTransactions = viewModel.getDerivedLedgerForDate(normalizedDate)
                     } else {
                         // Adding new transaction
                         val txToSave = newTransaction.copy(
                             date = viewModel.normalizeDateToMidnight(selectedDate)
                         )
-                        transactions = transactions + txToSave
+                        viewModel.saveOrUpdateLedgerTransaction(txToSave)
+                        // Refresh derived transactions from source
+                        derivedTransactions = viewModel.getDerivedLedgerForDate(normalizedDate)
                     }
                     showAddDialog = false
                     editingTransaction = null

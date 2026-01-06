@@ -106,18 +106,29 @@ class MainRepository @Inject constructor(
     suspend fun getDerivedDailyLedgerForDate(date: Long): List<DerivedLedgerEntry> {
         val normalizedDate = normalizeDateToMidnight(date)
         
-        // 1. Get customer/supplier transactions for this date
-        val customerTx = customerTransactionDao.getTransactionsByDateSync(normalizedDate)
+        // Calculate end of day (next midnight) for range query
+        val endOfDay = normalizedDate + 24 * 60 * 60 * 1000  // Add 24 hours in milliseconds
         
-        // 2. Get expenses for this date
-        val expenses = dailyExpenseDao.getExpensesByDateSync(normalizedDate)
+        // 1. Get customer/supplier transactions for this date using RANGE query
+        // This catches transactions saved with any time on that day
+        val customerTx = customerTransactionDao.getTransactionsByDateRangeSync(normalizedDate, endOfDay)
+        
+        // 2. Get expenses for this date using RANGE query
+        val expenses = dailyExpenseDao.getExpensesByDateRangeSync(normalizedDate, endOfDay)
         
         // 3. Convert to unified ledger entries
         return buildList {
             // Customer/Supplier transactions
             for (tx in customerTx) {
                 val customer = customerDao.getCustomerByIdSync(tx.customerId)
-                val isSupplier = customer?.type == "SELLER" || customer?.type == "BOTH"
+                
+                // Determine if this is a supplier transaction:
+                // 1. Customer type is SELLER or BOTH
+                // 2. Transaction type is PURCHASE or PAYMENT (always supplier types)
+                val isSupplier = customer?.type == "SELLER" || 
+                                 customer?.type == "BOTH" ||
+                                 tx.type == "PURCHASE" || 
+                                 tx.type == "PAYMENT"
                 
                 // Determine ledger mode based on transaction type and payment method
                 val mode = determineLedgerMode(
@@ -128,9 +139,16 @@ class MainRepository @Inject constructor(
                 
                 // Determine category for display grouping
                 val category = when {
+                    // Supplier purchase (You Got goods from supplier) - goes to Khareedari section
                     tx.type == "PURCHASE" -> DerivedLedgerCategory.PURCHASE
+                    // Supplier DEBIT with supplier flag = also purchase (legacy transactions)
+                    isSupplier && tx.type == "DEBIT" -> DerivedLedgerCategory.PURCHASE
+                    // Supplier payment (You Gave money to supplier)
+                    tx.type == "PAYMENT" -> DerivedLedgerCategory.SUPPLIER_PAYMENT
                     isSupplier && tx.type == "CREDIT" -> DerivedLedgerCategory.SUPPLIER_PAYMENT
+                    // Customer payment received (You Got money from customer)
                     tx.type == "DEBIT" -> DerivedLedgerCategory.CASH_IN
+                    // Customer credit (You Gave credit to customer)
                     tx.type == "CREDIT" -> DerivedLedgerCategory.CASH_OUT
                     else -> DerivedLedgerCategory.CASH_OUT
                 }

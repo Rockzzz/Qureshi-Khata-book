@@ -198,11 +198,14 @@ class AddTransactionViewModel @Inject constructor(
         paymentMethod: String,
         voiceNotePath: String?
     ) {
+        // CRITICAL: Normalize date to midnight for proper daily ledger grouping
+        val normalizedDate = normalizeDateToMidnight(date)
+        
          val tx = CustomerTransaction(
             customerId = customerId,
             type = "PURCHASE", // Or "DEBIT" if we want unified types? Let's use "PURCHASE" for clarity in DB
             amount = amount,
-            date = date,
+            date = normalizedDate,  // Use normalized date!
             note = note,
             paymentMethod = paymentMethod,
             voiceNotePath = voiceNotePath,
@@ -223,7 +226,7 @@ class AddTransactionViewModel @Inject constructor(
         val sourceType = if (isSupplierPurchase) SourceType.SUPPLIER else SourceType.CUSTOMER
         
         val ledgerEntry = DailyLedgerTransaction(
-            date = date,
+            date = normalizedDate,  // Use normalized date!
             mode = ledgerMode,
             amount = amount,
             party = partyName,
@@ -234,5 +237,15 @@ class AddTransactionViewModel @Inject constructor(
             sourceId = if (isSupplierPurchase) customerId else txId
         )
         repository.insertOrUpdateLedgerTransaction(ledgerEntry)
+    }
+    
+    private fun normalizeDateToMidnight(timestamp: Long): Long {
+        val calendar = java.util.Calendar.getInstance()
+        calendar.timeInMillis = timestamp
+        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        calendar.set(java.util.Calendar.MINUTE, 0)
+        calendar.set(java.util.Calendar.SECOND, 0)
+        calendar.set(java.util.Calendar.MILLISECOND, 0)
+        return calendar.timeInMillis
     }
 }
